@@ -9,7 +9,7 @@ from datetime import datetime
 def conectar():
     host = os.environ.get("DB_HOST", "localhost")
     user = os.environ.get("DB_USER", "aero_user")
-    password = os.environ.get("DB_PASS", "aero123")
+    password = os. environ.get("DB_PASS", "aero123")
     database = os.environ.get("DB_NAME", "aeropuerto")
 
     return mysql.connector.connect(
@@ -30,10 +30,10 @@ def normalizar(nombre):
 
     nombre = nombre.upper()
     nombre = (
-        nombre.replace("Á","A").replace("É","E").replace("Í","I")
+        nombre.replace("Á","A"). replace("É","E").replace("Í","I")
               .replace("Ó","O").replace("Ú","U").replace("Ñ","N")
     )
-    return nombre.strip()
+    return nombre. strip()
 
 # -------------------------------------------
 # BÚSQUEDA DE PASAJERO POR NOMBRE + VUELO
@@ -64,14 +64,33 @@ def buscar_pasajero_por_nombre_y_vuelo(nombre, numero_vuelo):
     return resultado
 
 # -------------------------------------------
-# GUARDAR RFID + EMBEDDING FACIAL DEL PASAJERO
+# GUARDAR SOLO EL RFID DEL PASAJERO
 # -------------------------------------------
-def guardar_rfid_y_embedding_en_pasajero(id_pasajero, rfid_uid, embedding):
+def guardar_rfid_en_pasajero(id_pasajero, rfid_uid):
     """
-    Guarda:
-    - RFID (rfid_uid)
-    - embedding facial (foto_embedding)
-    - cambia estado a VALIDADO
+    Guarda solo el RFID del pasajero
+    """
+    db = conectar()
+    cursor = db.cursor()
+
+    sql = """
+        UPDATE pasajeros
+        SET rfid_uid = %s
+        WHERE id_pasajero = %s;
+    """
+
+    cursor.execute(sql, (rfid_uid, id_pasajero))
+    db.commit()
+
+    cursor.close()
+    db.close()
+
+# -------------------------------------------
+# GUARDAR SOLO EL EMBEDDING FACIAL
+# -------------------------------------------
+def guardar_embedding_en_pasajero(id_pasajero, embedding):
+    """
+    Guarda el embedding facial y cambia estado a VALIDADO
     """
     if embedding is not None:
         embedding_bytes = embedding.tobytes()
@@ -83,13 +102,12 @@ def guardar_rfid_y_embedding_en_pasajero(id_pasajero, rfid_uid, embedding):
 
     sql = """
         UPDATE pasajeros
-        SET rfid_uid = %s,
-            foto_embedding = %s,
+        SET rostro_id = %s,
             estado = 'VALIDADO'
         WHERE id_pasajero = %s;
     """
 
-    cursor.execute(sql, (rfid_uid, embedding_bytes, id_pasajero))
+    cursor.execute(sql, (embedding_bytes, id_pasajero))
     db.commit()
 
     cursor.close()
@@ -105,12 +123,12 @@ def obtener_embedding_pasajero(id_pasajero):
     db = conectar()
     cursor = db.cursor()
 
-    sql = "SELECT foto_embedding FROM pasajeros WHERE id_pasajero = %s;"
+    sql = "SELECT rostro_id FROM pasajeros WHERE id_pasajero = %s;"
     cursor.execute(sql, (id_pasajero,))
     row = cursor.fetchone()
 
     cursor.close()
-    db.close()
+    db. close()
 
     if not row or row[0] is None:
         return None
@@ -138,7 +156,7 @@ def buscar_por_rfid(rfid_uid):
     res = cursor.fetchone()
 
     cursor.close()
-    db.close()
+    db. close()
 
     return res
 
@@ -157,11 +175,11 @@ def obtener_vuelo_por_rfid(rfid_uid):
         SELECT v.id_vuelo, v.numero_vuelo, v.destino, 
                v.hora_salida, v.puerta_asignada
         FROM vuelos v
-        JOIN pasajeros p ON p.id_vuelo = v.id_vuelo
+        JOIN pasajeros p ON p.id_vuelo = v. id_vuelo
         WHERE p.rfid_uid = %s;
     """
 
-    cursor.execute(sql, (rfid_uid,))
+    cursor. execute(sql, (rfid_uid,))
     vuelo = cursor.fetchone()
 
     cursor.close()
@@ -214,7 +232,7 @@ def verificar_acceso_previo(id_pasajero):
     acceso = cursor.fetchone()
 
     cursor.close()
-    db.close()
+    db. close()
 
     return acceso is not None
 
@@ -264,7 +282,7 @@ def listar_vuelos_activos():
     sql = """
         SELECT v.*, COUNT(p.id_pasajero) as total_pasajeros
         FROM vuelos v
-        LEFT JOIN pasajeros p ON p.id_vuelo = v.id_vuelo
+        LEFT JOIN pasajeros p ON p.id_vuelo = v. id_vuelo
         WHERE v.hora_salida > NOW()
         GROUP BY v.id_vuelo
         ORDER BY v.hora_salida ASC;
