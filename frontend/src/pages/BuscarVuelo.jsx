@@ -1,28 +1,65 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API_URL = "http://localhost:5000";
+
 export default function BuscarVuelo() {
   const [nombre, setNombre] = useState("");
   const [vuelo, setVuelo] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
+    setError("");
 
     if (nombre.trim() === "" || vuelo.trim() === "") {
-      alert("Por favor ingresa tu nombre y número de vuelo.");
+      setError("Por favor ingresa tu nombre y número de vuelo.");
       return;
     }
 
-    navigate("/rfid");
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/buscar-pasajero`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: nombre,
+          numero_vuelo: parseInt(vuelo),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.status === "ok") {
+        // Guardar datos del pasajero en localStorage
+        localStorage.setItem("id_pasajero", data.id_pasajero);
+        localStorage.setItem("nombre_pasajero", data.nombre_normalizado);
+        localStorage.setItem("numero_vuelo", data.numero_vuelo);
+        localStorage.setItem("destino", data.destino);
+
+        // Ir a la siguiente página
+        navigate("/rfid");
+      } else {
+        setError(data.msg || "No se encontró el pasajero");
+      }
+    } catch (err) {
+      setError("Error de conexión con el servidor");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div className="container">
-      {/* LOGO */}
       <img src="/GAP_logo.jpg" alt="Logo aeropuerto" className="logo" />
 
       <h2 className="title">Buscar vuelo</h2>
+
+      {error && <div style={{ color: "red", marginBottom: "10px" }}>{error}</div>}
 
       <form onSubmit={handleSubmit}>
         <input
@@ -30,7 +67,8 @@ export default function BuscarVuelo() {
           placeholder="Nombre completo"
           className="input"
           value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
+          onChange={(e) => setNombre(e.target. value)}
+          disabled={loading}
         />
 
         <input
@@ -39,10 +77,11 @@ export default function BuscarVuelo() {
           className="input"
           value={vuelo}
           onChange={(e) => setVuelo(e.target.value)}
+          disabled={loading}
         />
 
-        <button className="button" type="submit">
-          Continuar
+        <button className="button" type="submit" disabled={loading}>
+          {loading ?  "Buscando..." : "Continuar"}
         </button>
       </form>
     </div>
