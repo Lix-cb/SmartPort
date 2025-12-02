@@ -11,7 +11,8 @@ from camera_recognition import (
 )
 from db import (
     buscar_pasajero_por_nombre_y_vuelo,
-    guardar_rfid_y_embedding_en_pasajero,
+    guardar_rfid_en_pasajero,
+    guardar_embedding_en_pasajero,
     obtener_embedding_pasajero,
     buscar_por_rfid,
     obtener_vuelo_por_rfid,
@@ -26,7 +27,7 @@ CORS(app)  # Permitir peticiones desde React
 # ============================
 # CONFIGURACIÓN MQTT
 # ============================
-MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt.cool")
+MQTT_BROKER = os.environ. get("MQTT_BROKER", "broker.mqtt. cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC_ACCESO = "aeropuerto/rfid/acceso"
 MQTT_TOPIC_RESPUESTA = "aeropuerto/rfid/respuesta"
@@ -66,7 +67,7 @@ def on_message(client, userdata, msg):
             return
         
         # Verificar que tenga estado VALIDADO (check-in completo)
-        if pasajero.get("estado") != "VALIDADO":
+        if pasajero. get("estado") != "VALIDADO":
             print(f"✗ Pasajero sin check-in completo: {pasajero['nombre_normalizado']}")
             client.publish(MQTT_TOPIC_RESPUESTA, "no pass")
             return
@@ -76,7 +77,7 @@ def on_message(client, userdata, msg):
         
         if not vuelo_info:
             print("✗ No se encontró información del vuelo")
-            client.publish(MQTT_TOPIC_RESPUESTA, "no pass")
+            client. publish(MQTT_TOPIC_RESPUESTA, "no pass")
             return
         
         # Registrar acceso en la base de datos
@@ -91,7 +92,7 @@ def on_message(client, userdata, msg):
         # ACCESO AUTORIZADO
         print(f"✓ ACCESO AUTORIZADO para {pasajero['nombre_normalizado']}")
         print(f"  Vuelo: {vuelo_info['numero_vuelo']} → {vuelo_info['destino']}")
-        print(f"  Puerta asignada: {vuelo_info.get('puerta_asignada', 'N/A')}")
+        print(f"  Puerta asignada: {vuelo_info. get('puerta_asignada', 'N/A')}")
         
         client.publish(MQTT_TOPIC_RESPUESTA, "pass")
         
@@ -128,7 +129,7 @@ def api_buscar_pasajero():
     Busca un pasajero por nombre y número de vuelo
     """
     data = request.get_json(silent=True) or {}
-    nombre = data.get("nombre", "").strip()
+    nombre = data.get("nombre", ""). strip()
     numero_vuelo = data.get("numero_vuelo")
 
     if not nombre or numero_vuelo is None:
@@ -153,17 +154,17 @@ def api_buscar_pasajero():
         "nombre_normalizado": pasajero["nombre_normalizado"],
         "numero_vuelo": pasajero["numero_vuelo"],
         "destino": pasajero["destino"],
-        "estado": pasajero.get("estado", "REGISTRADO")
+        "estado": pasajero. get("estado", "REGISTRADO")
     })
 
 # ============================
-# MÓDULO 1 - Registrar RFID + rostro
+# MÓDULO 1 - Registrar RFID
 # ============================
 
-@app.route("/api/registrar-persona", methods=["POST"])
-def api_registrar_persona():
+@app.route("/api/registrar-rfid", methods=["POST"])
+def api_registrar_rfid():
     """
-    Registra RFID y embedding facial para un pasajero
+    Registra solo el RFID para un pasajero
     """
     data = request.get_json(silent=True) or {}
     id_pasajero = data.get("id_pasajero")
@@ -177,7 +178,7 @@ def api_registrar_persona():
     except ValueError:
         return jsonify({"error": "id_pasajero debe ser entero"}), 400
 
-    # 1) Obtener RFID
+    # Obtener RFID
     if rfid_manual and str(rfid_manual).strip():
         rfid_uid = str(rfid_manual).strip()
         print(f"[DEBUG] Usando RFID manual: {rfid_uid}")
@@ -189,25 +190,58 @@ def api_registrar_persona():
 
     print(f"✓ RFID detectado: {rfid_uid}")
 
-    # 2) Capturar embedding facial
+    # Guardar en BD
+    try:
+        guardar_rfid_en_pasajero(id_pasajero, rfid_uid)
+        print(f"✓ RFID registrado exitosamente")
+    except Exception as e:
+        return jsonify({"error": f"Error al guardar RFID: {e}"}), 500
+
+    return jsonify({
+        "status": "ok",
+        "msg": "RFID registrado exitosamente",
+        "id_pasajero": id_pasajero,
+        "rfid_uid": rfid_uid,
+    })
+
+# ============================
+# MÓDULO 1 - Registrar rostro
+# ============================
+
+@app.route("/api/registrar-rostro", methods=["POST"])
+def api_registrar_rostro():
+    """
+    Captura y registra el embedding facial para un pasajero
+    """
+    data = request.get_json(silent=True) or {}
+    id_pasajero = data.get("id_pasajero")
+
+    if id_pasajero is None:
+        return jsonify({"error": "Falta id_pasajero"}), 400
+
+    try:
+        id_pasajero = int(id_pasajero)
+    except ValueError:
+        return jsonify({"error": "id_pasajero debe ser entero"}), 400
+
+    # Capturar embedding facial
     print("📸 Capturando embedding facial desde cámara...")
     emb = obtener_embedding_camara_headless(headless=True)
     
     if emb is None:
         return jsonify({"error": "No se pudo obtener un embedding facial válido"}), 500
 
-    # 3) Guardar en BD
+    # Guardar en BD
     try:
-        guardar_rfid_y_embedding_en_pasajero(id_pasajero, rfid_uid, emb)
-        print(f"✓ Pasajero validado exitosamente")
+        guardar_embedding_en_pasajero(id_pasajero, emb)
+        print(f"✓ Rostro registrado y pasajero validado exitosamente")
     except Exception as e:
-        return jsonify({"error": f"Error al guardar en BD: {e}"}), 500
+        return jsonify({"error": f"Error al guardar embedding: {e}"}), 500
 
     return jsonify({
         "status": "ok",
-        "msg": "Pasajero validado y RFID registrado exitosamente",
+        "msg": "Rostro registrado exitosamente.  Check-in completo.",
         "id_pasajero": id_pasajero,
-        "rfid_uid": rfid_uid,
     })
 
 # ============================
