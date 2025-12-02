@@ -1,7 +1,7 @@
 {
-  "name": "aeropuerto-smart-frontend",
+  "name": "react-vite",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
