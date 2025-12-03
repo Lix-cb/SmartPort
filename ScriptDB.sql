@@ -20,7 +20,7 @@ CREATE TABLE admins (
 );
 
 INSERT INTO admins (rfid_uid, nombre) 
-VALUES ('47600058058', 'ADMINISTRADOR PRINCIPAL');
+VALUES ('476600058058', 'ADMINISTRADOR PRINCIPAL');
 
 -- -----------------------------------------------------
 -- TABLA: vuelos
@@ -118,4 +118,5 @@ SELECT 'Base de datos v2. 0 optimizada creada exitosamente' AS status;
 SELECT COUNT(*) AS total_admins FROM admins;
 SELECT COUNT(*) AS total_vuelos FROM vuelos;
 SELECT COUNT(*) AS total_pasajeros FROM pasajeros;
+
 
