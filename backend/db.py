@@ -17,7 +17,7 @@ DB_CONFIG = {
     'user': 'aero_user',
     'password': 'aero123',
     'database': 'aeropuerto',
-    'cursorclass': pymysql.cursors.DictCursor  # Devolver diccionarios por defecto
+    'cursorclass': pymysql.cursors.DictCursor,  # Devolver diccionarios por defecto
     'ssl_disabled': True 
 }
 
