@@ -1,14 +1,14 @@
 """
 db.py - Modulo de conexion y operaciones con la base de datos
-SmartPort v2.0 - OPTIMIZADO
+SmartPort v2.0 - OPTIMIZADO + FIX Python 3.13
 
 MODULO 1: Funciones de registro y validacion biometrica
 MODULO 2: Funciones de registro de peso
 MODULO 3: Funciones de verificacion de puerta fisica
 """
 
-import mysql.connector
-from mysql.connector import Error
+import pymysql  # FIX: Reemplazar mysql.connector por pymysql (compatible Python 3.13)
+from pymysql import Error
 import pickle
 import numpy as np
 
@@ -16,13 +16,15 @@ DB_CONFIG = {
     'host': 'localhost',
     'user': 'aero_user',
     'password': 'aero123',
-    'database': 'aeropuerto'
+    'database': 'aeropuerto',
+    'cursorclass': pymysql.cursors.DictCursor  # Devolver diccionarios por defecto
+    'ssl_disabled': True 
 }
 
 def get_db_connection():
     """Crear conexion a la base de datos"""
     try:
-        conn = mysql.connector.connect(**DB_CONFIG)
+        conn = pymysql.connect(**DB_CONFIG)
         return conn
     except Error as e:
         print(f"[ERROR] Error conectando a la base de datos: {e}")
@@ -39,14 +41,14 @@ def verificar_admin(rfid_uid):
         return None
     
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT id_admin, nombre, rfid_uid 
             FROM admins 
             WHERE rfid_uid = %s
         """, (rfid_uid,))
         
-        admin = cursor.fetchone()
+        admin = cursor. fetchone()
         return admin
     except Error as e:
         print(f"[ERROR] Error verificando admin: {e}")
@@ -63,12 +65,12 @@ def registrar_admin(rfid_uid, nombre):
     
     try:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor. execute("""
             INSERT INTO admins (rfid_uid, nombre)
             VALUES (%s, %s)
         """, (rfid_uid, nombre. upper(). strip())) 
         
-        conn.commit()
+        conn. commit()
         return True
     except Error as e:
         print(f"[ERROR] Error registrando admin: {e}")
@@ -84,7 +86,7 @@ def listar_admins():
         return []
     
     try:
-        cursor = conn. cursor(dictionary=True)
+        cursor = conn. cursor()
         cursor.execute("""
             SELECT id_admin, nombre, rfid_uid, fecha_registro 
             FROM admins 
@@ -98,7 +100,7 @@ def listar_admins():
         return []
     finally:
         cursor.close()
-        conn.close()
+        conn. close()
 
 # ========================================
 # FUNCIONES PARA VUELOS
@@ -114,7 +116,7 @@ def buscar_o_crear_vuelo(numero_vuelo, destino="DESTINO"):
         return None
     
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         # Buscar vuelo existente
         cursor.execute("""
@@ -160,7 +162,7 @@ def crear_pasajero(nombre, numero_vuelo):
         return None
     
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         # Buscar o crear vuelo
         vuelo = buscar_o_crear_vuelo(numero_vuelo)
@@ -168,7 +170,7 @@ def crear_pasajero(nombre, numero_vuelo):
             return None
         
         # Crear pasajero
-        nombre_norm = nombre.upper(). strip()
+        nombre_norm = nombre.upper().strip()
         cursor.execute("""
             INSERT INTO pasajeros (nombre_normalizado, numero_vuelo)
             VALUES (%s, %s)
@@ -179,7 +181,7 @@ def crear_pasajero(nombre, numero_vuelo):
         
         # Obtener datos completos
         cursor.execute("""
-            SELECT p.id_pasajero, p.nombre_normalizado, p. rfid_uid, p.estado,
+            SELECT p.id_pasajero, p.nombre_normalizado, p.rfid_uid, p.estado,
                    v.numero_vuelo, v.destino
             FROM pasajeros p
             JOIN vuelos v ON p.numero_vuelo = v.numero_vuelo
@@ -255,7 +257,7 @@ def buscar_pasajero_por_rfid(rfid_uid):
         return None
     
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT p.id_pasajero, p.nombre_normalizado, p.rfid_uid, 
                    p.rostro_embedding, p.estado,
@@ -265,7 +267,7 @@ def buscar_pasajero_por_rfid(rfid_uid):
             WHERE p.rfid_uid = %s
         """, (rfid_uid,))
         
-        pasajero = cursor.fetchone()
+        pasajero = cursor. fetchone()
         
         if pasajero and pasajero['rostro_embedding']:
             # Deserializar el embedding
@@ -352,10 +354,10 @@ def verificar_acceso_puerta(rfid_uid):
         return None
     
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT p.id_pasajero, p.nombre_normalizado, p. estado,
+            SELECT p.id_pasajero, p.nombre_normalizado, p.estado,
                    a.id_acceso, a.puerta_abierta, a.porcentaje_similitud
             FROM pasajeros p
             LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
