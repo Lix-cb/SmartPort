@@ -1,10 +1,10 @@
 """
-db.py - Módulo de conexión y operaciones con la base de datos
-SmartPort v2.0
+db.py - Modulo de conexion y operaciones con la base de datos
+SmartPort v2.0 - MODULO 1
 """
 
 import mysql.connector
-from mysql. connector import Error
+from mysql.connector import Error
 import pickle
 import numpy as np
 
@@ -16,12 +16,12 @@ DB_CONFIG = {
 }
 
 def get_db_connection():
-    """Crear conexión a la base de datos"""
+    """Crear conexion a la base de datos"""
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         return conn
     except Error as e:
-        print(f"Error conectando a la base de datos: {e}")
+        print(f"[ERROR] Error conectando a la base de datos: {e}")
         return None
 
 # ========================================
@@ -45,7 +45,7 @@ def verificar_admin(rfid_uid):
         admin = cursor.fetchone()
         return admin
     except Error as e:
-        print(f"Error verificando admin: {e}")
+        print(f"[ERROR] Error verificando admin: {e}")
         return None
     finally:
         cursor.close()
@@ -59,7 +59,7 @@ def registrar_admin(rfid_uid, nombre):
     
     try:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor. execute("""
             INSERT INTO admins (rfid_uid, nombre)
             VALUES (%s, %s)
         """, (rfid_uid, nombre. upper()))
@@ -67,7 +67,7 @@ def registrar_admin(rfid_uid, nombre):
         conn.commit()
         return True
     except Error as e:
-        print(f"Error registrando admin: {e}")
+        print(f"[ERROR] Error registrando admin: {e}")
         return False
     finally:
         cursor.close()
@@ -80,8 +80,8 @@ def listar_admins():
         return []
     
     try:
-        cursor = conn. cursor(dictionary=True)
-        cursor.execute("""
+        cursor = conn.cursor(dictionary=True)
+        cursor. execute("""
             SELECT id_admin, nombre, rfid_uid, fecha_registro 
             FROM admins 
             ORDER BY fecha_registro DESC
@@ -90,7 +90,7 @@ def listar_admins():
         admins = cursor.fetchall()
         return admins
     except Error as e:
-        print(f"Error listando admins: {e}")
+        print(f"[ERROR] Error listando admins: {e}")
         return []
     finally:
         cursor.close()
@@ -116,7 +116,7 @@ def buscar_o_crear_vuelo(numero_vuelo, destino="DESTINO", hora_salida=None):
             WHERE numero_vuelo = %s
         """, (numero_vuelo,))
         
-        vuelo = cursor. fetchone()
+        vuelo = cursor.fetchone()
         
         if vuelo:
             return vuelo
@@ -146,7 +146,7 @@ def buscar_o_crear_vuelo(numero_vuelo, destino="DESTINO", hora_salida=None):
         
         return cursor.fetchone()
     except Error as e:
-        print(f"Error en buscar_o_crear_vuelo: {e}")
+        print(f"[ERROR] Error en buscar_o_crear_vuelo: {e}")
         return None
     finally:
         cursor.close()
@@ -157,7 +157,7 @@ def buscar_o_crear_vuelo(numero_vuelo, destino="DESTINO", hora_salida=None):
 # ========================================
 
 def crear_pasajero(nombre, numero_vuelo):
-    """Crear un nuevo pasajero (sin RFID ni rostro aún)"""
+    """Crear un nuevo pasajero (sin RFID ni rostro aun)"""
     conn = get_db_connection()
     if not conn:
         return None
@@ -191,7 +191,7 @@ def crear_pasajero(nombre, numero_vuelo):
         
         return cursor.fetchone()
     except Error as e:
-        print(f"Error creando pasajero: {e}")
+        print(f"[ERROR] Error creando pasajero: {e}")
         return None
     finally:
         cursor.close()
@@ -214,11 +214,11 @@ def registrar_rfid_pasajero(id_pasajero, rfid_uid):
         conn. commit()
         return cursor.rowcount > 0
     except Error as e:
-        print(f"Error registrando RFID: {e}")
+        print(f"[ERROR] Error registrando RFID: {e}")
         return False
     finally:
         cursor.close()
-        conn. close()
+        conn.close()
 
 def registrar_rostro_pasajero(id_pasajero, embedding):
     """Guardar embedding facial de un pasajero"""
@@ -230,7 +230,7 @@ def registrar_rostro_pasajero(id_pasajero, embedding):
         cursor = conn.cursor()
         
         # Serializar el embedding (numpy array) a bytes
-        embedding_bytes = pickle. dumps(embedding)
+        embedding_bytes = pickle.dumps(embedding)
         
         cursor.execute("""
             UPDATE pasajeros 
@@ -241,7 +241,7 @@ def registrar_rostro_pasajero(id_pasajero, embedding):
         conn.commit()
         return cursor.rowcount > 0
     except Error as e:
-        print(f"Error registrando rostro: {e}")
+        print(f"[ERROR] Error registrando rostro: {e}")
         return False
     finally:
         cursor.close()
@@ -264,8 +264,8 @@ def buscar_pasajero_por_rfid(rfid_uid):
                    p.rostro_embedding, p.estado,
                    v.numero_vuelo, v.destino, v.hora_salida, v.puerta_asignada
             FROM pasajeros p
-            JOIN vuelos v ON p. id_vuelo = v.id_vuelo
-            WHERE p. rfid_uid = %s
+            JOIN vuelos v ON p.id_vuelo = v.id_vuelo
+            WHERE p.rfid_uid = %s
         """, (rfid_uid,))
         
         pasajero = cursor.fetchone()
@@ -276,14 +276,17 @@ def buscar_pasajero_por_rfid(rfid_uid):
         
         return pasajero
     except Error as e:
-        print(f"Error buscando pasajero por RFID: {e}")
+        print(f"[ERROR] Error buscando pasajero por RFID: {e}")
         return None
     finally:
         cursor.close()
         conn.close()
 
 def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
-    """Registrar un acceso exitoso a la puerta"""
+    """
+    Registrar validacion exitosa en BD (Modulo 1)
+    Activa bandera que sera verificada en Modulo 3 para abrir puerta fisica
+    """
     conn = get_db_connection()
     if not conn:
         return False
@@ -298,7 +301,8 @@ def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
         """, (id_pasajero,))
         
         if cursor.fetchone():
-            # Ya tiene acceso registrado
+            # Ya tiene acceso registrado (evita duplicados)
+            print("[INFO] Pasajero ya tiene acceso registrado previamente")
             return True
         
         # Registrar nuevo acceso
@@ -307,7 +311,7 @@ def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
             VALUES (%s, %s, %s)
         """, (id_pasajero, id_puerta, porcentaje_similitud))
         
-        # Actualizar estado del pasajero
+        # Actualizar estado del pasajero (bandera para Modulo 3)
         cursor.execute("""
             UPDATE pasajeros 
             SET estado = 'ABORDADO'
@@ -315,20 +319,24 @@ def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
         """, (id_pasajero,))
         
         conn.commit()
+        print(f"[OK] Acceso registrado - ID Pasajero: {id_pasajero}, Similitud: {porcentaje_similitud:.2f}%")
         return True
     except Error as e:
-        print(f"Error registrando acceso: {e}")
+        print(f"[ERROR] Error registrando acceso: {e}")
         return False
     finally:
         cursor.close()
         conn.close()
 
 # ========================================
-# FUNCIÓN AUXILIAR
+# FUNCION AUXILIAR
 # ========================================
 
 def calcular_similitud_facial(embedding1, embedding2):
-    """Calcular similitud entre dos embeddings faciales (distancia euclidiana)"""
+    """
+    Calcular similitud entre dos embeddings faciales
+    Usa distancia euclidiana y la convierte a porcentaje
+    """
     try:
         # Convertir a numpy arrays si no lo son
         emb1 = np.array(embedding1)
@@ -337,11 +345,12 @@ def calcular_similitud_facial(embedding1, embedding2):
         # Calcular distancia euclidiana
         distancia = np.linalg.norm(emb1 - emb2)
         
-        # Convertir a porcentaje de similitud (0. 6 = umbral típico de face_recognition)
+        # Convertir a porcentaje de similitud
         # Distancia menor = mayor similitud
+        # 0. 6 es el umbral tipico de face_recognition
         porcentaje = max(0, min(100, (1 - distancia) * 100))
         
         return porcentaje
     except Exception as e:
-        print(f"Error calculando similitud: {e}")
+        print(f"[ERROR] Error calculando similitud: {e}")
         return 0
