@@ -1,6 +1,7 @@
 """
-app.py - API REST para SmartPort v2. 0
+app.py - API REST para SmartPort v2. 0 - MÓDULO 1
 Sistema de registro y acceso con RFID + Reconocimiento facial
+MÓDULO 1: Solo registro y validación (NO abre puertas físicas)
 """
 
 from flask import Flask, request, jsonify
@@ -35,7 +36,7 @@ CORS(app)
 # CONFIGURACIÓN MQTT
 # ========================================
 
-MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt. cool")
+MQTT_BROKER = os. environ.get("MQTT_BROKER", "broker.mqtt.cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC_PUERTA = "aeropuerto/puerta/abrir"
 
@@ -59,11 +60,19 @@ def on_disconnect(client, userdata, rc):
 mqtt_client.on_connect = on_connect
 mqtt_client.on_disconnect = on_disconnect
 
+# ========================================
+# MÓDULO 1: MQTT deshabilitado (no requerido)
+# Se habilitará en Módulo 2 (recibir pesos) y Módulo 3 (abrir puerta)
+# ========================================
 try:
-    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-    mqtt_client.loop_start()
-except:
-    print(f"⚠️  No se pudo conectar al broker MQTT: {MQTT_BROKER}")
+    print("⚠️  MQTT deshabilitado en Módulo 1 (no requerido para registro)")
+    mqtt_conectado = False
+    # Descomentar las siguientes líneas en Módulo 2/3:
+    # mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    # mqtt_client.loop_start()
+except Exception as e:
+    print(f"⚠️  MQTT no disponible: {e}")
+    mqtt_conectado = False
 
 # ========================================
 # FUNCIONES AUXILIARES
@@ -88,7 +97,7 @@ def leer_rfid(timeout=10):
                     return rfid_str
             except:
                 pass
-            time.sleep(0.1)
+            time.sleep(0. 1)
         
         print("⏱️  Timeout leyendo RFID")
         return None
@@ -149,7 +158,10 @@ def capturar_rostro():
         return None
 
 def enviar_mqtt_abrir_puerta():
-    """Enviar señal MQTT para abrir la puerta"""
+    """
+    Enviar señal MQTT para abrir la puerta
+    NOTA: Esta función se usará en MÓDULO 3, no en Módulo 1
+    """
     global mqtt_conectado
     
     if mqtt_conectado:
@@ -173,7 +185,8 @@ def health_check():
     """Verificar estado del sistema"""
     return jsonify({
         'status': 'ok',
-        'mqtt': 'conectado' if mqtt_conectado else 'desconectado',
+        'modulo': 1,
+        'mqtt': 'conectado' if mqtt_conectado else 'desconectado (no requerido en Módulo 1)',
         'rfid': 'disponible' if RFID_DISPONIBLE else 'simulado',
         'broker': MQTT_BROKER
     })
@@ -186,19 +199,25 @@ def health_check():
 def admin_login():
     """Verificar acceso de administrador por RFID"""
     try:
+        print("\n=== INICIO LOGIN ADMIN ===")
+        
         # Leer RFID
         rfid_uid = leer_rfid(timeout=15)
         
         if not rfid_uid:
+            print("✗ No se detectó tarjeta RFID")
             return jsonify({
                 'status': 'error',
                 'error': 'No se detectó tarjeta RFID'
             }), 400
         
+        print(f"RFID detectado: {rfid_uid}")
+        
         # Verificar si es admin
         admin = verificar_admin(rfid_uid)
         
         if admin:
+            print(f"✓ Admin verificado: {admin['nombre']}")
             return jsonify({
                 'status': 'ok',
                 'admin': {
@@ -208,12 +227,14 @@ def admin_login():
                 }
             })
         else:
+            print("✗ RFID no autorizado")
             return jsonify({
                 'status': 'error',
                 'error': 'Acceso denegado - RFID no autorizado'
             }), 403
             
     except Exception as e:
+        print(f"✗ Error en login admin: {e}")
         return jsonify({
             'status': 'error',
             'error': str(e)
@@ -232,10 +253,13 @@ def registrar_nuevo_admin():
                 'error': 'El nombre es requerido'
             }), 400
         
+        print(f"\n=== REGISTRAR NUEVO ADMIN: {nombre} ===")
+        
         # Leer RFID
         rfid_uid = leer_rfid(timeout=15)
         
         if not rfid_uid:
+            print("✗ No se detectó tarjeta RFID")
             return jsonify({
                 'status': 'error',
                 'error': 'No se detectó tarjeta RFID'
@@ -243,18 +267,21 @@ def registrar_nuevo_admin():
         
         # Registrar admin
         if registrar_admin(rfid_uid, nombre):
+            print(f"✓ Admin registrado: {nombre} - RFID: {rfid_uid}")
             return jsonify({
                 'status': 'ok',
                 'mensaje': f'Administrador {nombre} registrado correctamente',
                 'rfid_uid': rfid_uid
             })
         else:
+            print("✗ Error al registrar (posible RFID duplicado)")
             return jsonify({
                 'status': 'error',
                 'error': 'Error al registrar administrador (posible RFID duplicado)'
             }), 400
             
     except Exception as e:
+        print(f"✗ Error registrando admin: {e}")
         return jsonify({
             'status': 'error',
             'error': str(e)
@@ -289,10 +316,15 @@ def admin_crear_pasajero():
                 'error': 'Nombre y número de vuelo son requeridos'
             }), 400
         
+        print(f"\n=== CREAR PASAJERO ===")
+        print(f"Nombre: {nombre}")
+        print(f"Vuelo: {numero_vuelo}")
+        
         # Crear pasajero
         pasajero = crear_pasajero(nombre, numero_vuelo)
         
         if pasajero:
+            print(f"✓ Pasajero creado - ID: {pasajero['id_pasajero']}")
             return jsonify({
                 'status': 'ok',
                 'pasajero': {
@@ -303,12 +335,14 @@ def admin_crear_pasajero():
                 }
             })
         else:
+            print("✗ Error al crear pasajero")
             return jsonify({
                 'status': 'error',
                 'error': 'Error al crear pasajero'
             }), 500
             
     except Exception as e:
+        print(f"✗ Error: {e}")
         return jsonify({
             'status': 'error',
             'error': str(e)
@@ -327,10 +361,13 @@ def admin_registrar_rfid():
                 'error': 'ID de pasajero requerido'
             }), 400
         
+        print(f"\n=== REGISTRAR RFID - Pasajero ID: {id_pasajero} ===")
+        
         # Leer RFID
         rfid_uid = leer_rfid(timeout=15)
         
         if not rfid_uid:
+            print("✗ No se detectó tarjeta RFID")
             return jsonify({
                 'status': 'error',
                 'error': 'No se detectó tarjeta RFID'
@@ -338,17 +375,20 @@ def admin_registrar_rfid():
         
         # Registrar RFID
         if registrar_rfid_pasajero(id_pasajero, rfid_uid):
+            print(f"✓ RFID registrado: {rfid_uid}")
             return jsonify({
                 'status': 'ok',
                 'rfid_uid': rfid_uid
             })
         else:
+            print("✗ Error al registrar RFID (posible duplicado)")
             return jsonify({
                 'status': 'error',
                 'error': 'Error al registrar RFID (posible RFID duplicado)'
             }), 400
             
     except Exception as e:
+        print(f"✗ Error: {e}")
         return jsonify({
             'status': 'error',
             'error': str(e)
@@ -367,10 +407,13 @@ def admin_registrar_rostro():
                 'error': 'ID de pasajero requerido'
             }), 400
         
+        print(f"\n=== REGISTRAR ROSTRO - Pasajero ID: {id_pasajero} ===")
+        
         # Capturar rostro
         embedding = capturar_rostro()
         
         if embedding is None:
+            print("✗ No se pudo capturar el rostro")
             return jsonify({
                 'status': 'error',
                 'error': 'No se pudo capturar el rostro'
@@ -378,91 +421,116 @@ def admin_registrar_rostro():
         
         # Guardar en BD
         if registrar_rostro_pasajero(id_pasajero, embedding):
+            print("✓ Rostro registrado correctamente")
             return jsonify({
                 'status': 'ok',
                 'mensaje': 'Rostro registrado correctamente'
             })
         else:
+            print("✗ Error al guardar el rostro")
             return jsonify({
                 'status': 'error',
                 'error': 'Error al guardar el rostro'
             }), 500
             
     except Exception as e:
+        print(f"✗ Error: {e}")
         return jsonify({
             'status': 'error',
             'error': str(e)
         }), 500
 
 # ========================================
-# ENDPOINTS - USUARIO (ACCESO)
+# ENDPOINTS - USUARIO (ACCESO) - MÓDULO 1
 # ========================================
 
 @app.route('/api/usuario/verificar-acceso', methods=['POST'])
 def usuario_verificar_acceso():
-    """Verificar acceso con RFID + rostro"""
+    """
+    Verificar acceso con RFID + rostro
+    MÓDULO 1: Solo registra validación en BD (NO abre puerta física)
+    """
     try:
         # PASO 1: Leer RFID
-        print("\n=== INICIO VERIFICACIÓN ACCESO ===")
+        print("\n" + "="*60)
+        print("=== INICIO VERIFICACIÓN ACCESO - MÓDULO 1 ===")
+        print("="*60)
+        
         rfid_uid = leer_rfid(timeout=15)
         
         if not rfid_uid:
+            print("✗ PASO 1 FALLIDO: No se detectó tarjeta RFID")
             return jsonify({
                 'status': 'error',
                 'error': 'No se detectó tarjeta RFID'
             }), 400
         
-        print(f"RFID detectado: {rfid_uid}")
+        print(f"✓ PASO 1: RFID detectado: {rfid_uid}")
         
         # PASO 2: Buscar pasajero con ese RFID
         pasajero = buscar_pasajero_por_rfid(rfid_uid)
         
         if not pasajero:
-            print("✗ RFID no encontrado en la base de datos")
+            print("✗ PASO 2 FALLIDO: RFID no encontrado en la base de datos")
             return jsonify({
                 'status': 'error',
                 'error': 'RFID no registrado'
             }), 404
         
-        print(f"Pasajero encontrado: {pasajero['nombre_normalizado']}")
+        print(f"✓ PASO 2: Pasajero encontrado: {pasajero['nombre_normalizado']}")
+        print(f"         Vuelo: {pasajero['numero_vuelo']} - Destino: {pasajero['destino']}")
         
         # Verificar que tenga rostro registrado
         if pasajero['rostro_embedding'] is None:
-            print("✗ Pasajero sin rostro registrado")
+            print("✗ PASO 2 FALLIDO: Pasajero sin rostro registrado")
             return jsonify({
                 'status': 'error',
                 'error': 'Pasajero sin biometría registrada'
             }), 400
         
         # PASO 3: Capturar rostro actual
-        print("Capturando rostro actual...")
+        print("⏳ PASO 3: Capturando rostro actual...")
         embedding_actual = capturar_rostro()
         
         if embedding_actual is None:
-            print("✗ No se pudo capturar rostro")
+            print("✗ PASO 3 FALLIDO: No se pudo capturar rostro")
             return jsonify({
                 'status': 'error',
                 'error': 'No se detectó rostro'
             }), 400
         
+        print("✓ PASO 3: Rostro capturado correctamente")
+        
         # PASO 4: Comparar rostros
-        print("Comparando rostros...")
+        print("⏳ PASO 4: Comparando rostros...")
         porcentaje_similitud = calcular_similitud_facial(
             pasajero['rostro_embedding'],
             embedding_actual
         )
         
-        print(f"Similitud facial: {porcentaje_similitud:. 2f}%")
+        print(f"✓ PASO 4: Similitud facial: {porcentaje_similitud:.2f}%")
         
         # PASO 5: Decidir si permitir acceso (umbral 60%)
-        if porcentaje_similitud >= 60.0:
-            print("✓ ACCESO CONCEDIDO")
+        if porcentaje_similitud >= 60. 0:
+            print("="*60)
+            print("✓✓✓ ACCESO CONCEDIDO ✓✓✓")
+            print("="*60)
             
-            # Registrar acceso en BD
+            # Registrar acceso en BD (activa bandera para Módulo 3)
+            print("⏳ PASO 5: Registrando acceso en base de datos...")
             registrar_acceso(pasajero['id_pasajero'], porcentaje_similitud)
+            print("✓ PASO 5: Acceso registrado en BD")
             
-            # Enviar señal MQTT para abrir puerta
-            enviar_mqtt_abrir_puerta()
+            # ========================================
+            # MÓDULO 1: NO ENVIAR SEÑAL MQTT
+            # Esta función se habilitará en Módulo 3
+            # ========================================
+            # enviar_mqtt_abrir_puerta()  # <-- COMENTADO para Módulo 1
+            
+            print("="*60)
+            print(f"BIENVENIDO: {pasajero['nombre_normalizado']}")
+            print(f"VUELO: {pasajero['numero_vuelo']} → {pasajero['destino']}")
+            print("="*60 + "\n")
             
             return jsonify({
                 'status': 'ok',
@@ -470,13 +538,17 @@ def usuario_verificar_acceso():
                 'pasajero': {
                     'nombre': pasajero['nombre_normalizado'],
                     'vuelo': pasajero['numero_vuelo'],
-                    'destino': pasajero['destino'],
-                    'puerta': pasajero['puerta_asignada'] or 'P1'
+                    'destino': pasajero['destino']
                 },
-                'similitud': round(porcentaje_similitud, 2)
+                'similitud': round(porcentaje_similitud, 2),
+                'mensaje': f'Bienvenido {pasajero["nombre_normalizado"]}'
             })
         else:
-            print("✗ ACCESO DENEGADO - Similitud insuficiente")
+            print("="*60)
+            print("✗✗✗ ACCESO DENEGADO ✗✗✗")
+            print(f"Similitud insuficiente: {porcentaje_similitud:. 2f}% (mínimo: 60%)")
+            print("="*60 + "\n")
+            
             return jsonify({
                 'status': 'error',
                 'acceso': 'denegado',
@@ -485,7 +557,10 @@ def usuario_verificar_acceso():
             }), 403
             
     except Exception as e:
-        print(f"✗ Error en verificación: {e}")
+        print("="*60)
+        print(f"✗✗✗ ERROR EN VERIFICACIÓN ✗✗✗")
+        print(f"Error: {e}")
+        print("="*60 + "\n")
         return jsonify({
             'status': 'error',
             'error': str(e)
@@ -496,12 +571,17 @@ def usuario_verificar_acceso():
 # ========================================
 
 if __name__ == '__main__':
-    print("\n" + "="*50)
-    print("🛫 SMARTPORT v2.0 - SISTEMA AEROPUERTO INTELIGENTE")
-    print("="*50)
-    print(f"MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}")
-    print(f"RFID: {'Conectado' if RFID_DISPONIBLE else 'Modo simulación'}")
-    print(f"Flask Server: 0.0.0.0:5000")
-    print("="*50 + "\n")
+    print("\n" + "="*60)
+    print("🛫 SMARTPORT v2.0 - MÓDULO 1")
+    print("   SISTEMA DE REGISTRO Y VALIDACIÓN BIOMÉTRICA")
+    print("="*60)
+    print(f"📍 Módulo: 1 (Registro RFID + Rostro)")
+    print(f"📡 MQTT: Deshabilitado (no requerido en Módulo 1)")
+    print(f"🔌 RFID: {'Conectado' if RFID_DISPONIBLE else 'Modo simulación'}")
+    print(f"🌐 Flask Server: http://0.0.0.0:5000")
+    print("="*60)
+    print("ℹ️  En Módulo 1 NO se abren puertas físicas")
+    print("ℹ️  Solo se registran validaciones en la base de datos")
+    print("="*60 + "\n")
     
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
