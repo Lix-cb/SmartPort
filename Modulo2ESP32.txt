@@ -1,0 +1,183 @@
+#include <Arduino.h>
+#include <Wire.h>
+#include <HX711.h>
+#include <LiquidCrystal_I2C.h>
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <time.h>
+
+// Pines del HX711
+#define HX_DOUT D6
+#define HX_SCK  D5
+
+// Pines LED
+#define LED_VERDE D7
+#define LED_ROJO  D8
+
+// WiFi y MQTT
+const char* ssid = "iPhone de Jorge";
+const char* password = "Arribalamaquina";
+
+const char* mqtt_server = "broker.mqtt.cool";
+const char* topic_peso = "aeropuerto/puerta1/bascula/peso";
+
+// LCD
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+HX711 scale;
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Calibration
+float calibration_factor = 236738.0;
+
+// Límites LEDs
+float limite_bajo = 0.1;
+float limite_alto = 2.0;
+
+// Control de envío
+bool pesoEnviado = false;
+
+const long gmtOffset_sec = -21600;
+const int daylightOffset_sec = 0;
+
+void initTime() {
+  configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
+
+  time_t now = time(nullptr);
+  int intentos = 0;
+
+  while (now < 100000 && intentos < 10) {
+    delay(300);
+    now = time(nullptr);
+    intentos++;
+  }
+}
+
+String getTimestamp() {
+  time_t now = time(nullptr);
+  struct tm* t = localtime(&now);
+
+  char buffer[30];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", t);
+  return String(buffer);
+}
+
+void setupWiFi() {
+  WiFi.begin(ssid, password);
+
+  int intentos = 0;
+  while (WiFi.status() != WL_CONNECTED && intentos < 25) {
+    delay(300);
+    intentos++;
+  }
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    if (client.connect("ESP8266_Celda")) return;
+    delay(500);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(LED_VERDE, OUTPUT);
+  pinMode(LED_ROJO, OUTPUT);
+
+  Wire.begin(D2, D1);
+  lcd.init();
+  lcd.backlight();
+
+  lcd.clear();
+  lcd.print("Iniciando...");
+  delay(600);
+
+  scale.begin(HX_DOUT, HX_SCK);
+  delay(300);
+  scale.set_scale(calibration_factor);
+
+  lcd.clear();
+  lcd.print("Tare sin peso..");
+  delay(800);
+  scale.tare();
+
+  lcd.clear();
+  lcd.print("Listo!");
+  delay(400);
+
+  setupWiFi();
+  client.setServer(mqtt_server, 1883);
+
+  initTime();
+}
+
+void loop() {
+
+  if (!client.connected()) reconnect();
+  client.loop();
+
+  if (scale.is_ready()) {
+
+    // LECTURA RÁPIDA DEL PESO — SIN FILTROS
+    float peso_kg = scale.get_units(5);
+
+    // LCD INMEDIATO
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Peso:");
+    lcd.setCursor(6, 0);
+    lcd.print(peso_kg, 3);
+    lcd.print(" kg");
+
+    Serial.print("Peso: ");
+    Serial.println(peso_kg, 3);
+
+    // LEDs
+    if (peso_kg >= limite_bajo && peso_kg <= limite_alto) {
+      digitalWrite(LED_VERDE, HIGH);
+      digitalWrite(LED_ROJO, LOW);
+    } else {
+      digitalWrite(LED_VERDE, LOW);
+      digitalWrite(LED_ROJO, HIGH);
+    }
+
+    // ------------------------------
+    //   ENVÍO MQTT DESPUÉS DE 8s
+    // ------------------------------
+    if (peso_kg > 0.100 && !pesoEnviado) {
+
+      delay(8000);   // 🔥 ESPERA EXACTAMENTE 8 SEGUNDOS
+
+      // Releer peso al final, para agarrar el peso correcto del momento
+      float peso_final = scale.get_units(10);
+
+      String timestamp = getTimestamp();
+
+      String mensaje = "{";
+      mensaje += "\"device\":\"ESP8266_Celda\",";
+      mensaje += "\"peso_kg\":" + String(peso_final, 3) + ",";
+      mensaje += "\"timestamp\":\"" + timestamp + "\"";
+      mensaje += "}";
+
+      client.publish(topic_peso, mensaje.c_str());
+      Serial.println("MQTT enviado: " + mensaje);
+
+      pesoEnviado = true;
+    }
+
+    // Reset si el peso baja
+    if (peso_kg <= 0.100) {
+      pesoEnviado = false;
+    }
+
+  } else {
+    lcd.clear();
+    lcd.print("No HX711");
+    digitalWrite(LED_VERDE, LOW);
+    digitalWrite(LED_ROJO, HIGH);
+  }
+
+  delay(150);
+}
