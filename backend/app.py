@@ -15,6 +15,7 @@ import cv2
 import face_recognition
 import numpy as np
 import time
+import threading
 
 # Importar funciones de base de datos
 from db import (
@@ -28,9 +29,13 @@ try:
     from mfrc522 import SimpleMFRC522
     reader = SimpleMFRC522()
     RFID_DISPONIBLE = True
+    # CRITICO: Lock para evitar lecturas simultaneas del RFID
+    rfid_lock = threading.Lock()
+    print("[OK] MFRC522 inicializado con lock de threading")
 except:
     print("[WARNING] MFRC522 no disponible - Usando modo simulacion")
     RFID_DISPONIBLE = False
+    rfid_lock = None
 
 app = Flask(__name__)
 CORS(app)
@@ -39,7 +44,7 @@ CORS(app)
 # CONFIGURACION MQTT
 # ========================================
 
-MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt. cool")
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt.cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC_VERIFICAR_RFID = "aeropuerto/verificar_rfid"  # ESP32 Puerta envia RFID
 MQTT_TOPIC_PUERTA_RESPUESTA = "aeropuerto/puerta/respuesta"  # Raspberry responde
@@ -50,13 +55,13 @@ MQTT_TOPIC_PESO = "aeropuerto/peso"  # ESP32 Bascula envia peso
 # ========================================
 try:
     # Python 3.13+ requiere especificar la version del API
-    mqtt_client = mqtt.Client(
+    mqtt_client = mqtt. Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION1,
         client_id="RaspberryPi_Aeropuerto"
     )
 except AttributeError:
     # Fallback para versiones antiguas de paho-mqtt
-    mqtt_client = mqtt.Client(client_id="RaspberryPi_Aeropuerto")
+    mqtt_client = mqtt. Client(client_id="RaspberryPi_Aeropuerto")
 
 mqtt_conectado = False
 
@@ -143,7 +148,7 @@ def verificar_rfid_para_puerta(rfid_uid):
         # Verificar que NO haya usado la puerta antes
         if resultado['puerta_abierta']:
             print(f"[ERROR] RFID {rfid_uid} ya fue usado anteriormente para abrir puerta")
-            mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+            mqtt_client. publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
             return
         
         # TODO OK: Autorizar apertura
@@ -216,9 +221,11 @@ except Exception as e:
 # ========================================
 
 def leer_rfid(timeout=30):
-    """Leer tarjeta RFID con timeout usando SimpleMFRC522. read() bloqueante
+    """
+    Leer tarjeta RFID con timeout y LOCK para evitar colisiones
     
-    Compatible con multithreading (Flask debug mode)
+    CRITICO: Usa un lock global para evitar que multiples threads
+    intenten acceder al lector RC522 simultaneamente (no es thread-safe)
     """
     if not RFID_DISPONIBLE:
         # Modo simulación
@@ -226,42 +233,53 @@ def leer_rfid(timeout=30):
         print(f"[SIMULACION] RFID generado: {simulated_id}")
         return simulated_id
     
-    import threading
-    
-    resultado = {'rfid': None, 'error': None}
-    
-    def leer_con_timeout():
-        """Thread que ejecuta la lectura bloqueante"""
-        try:
-            print(f"[INFO] Esperando tarjeta RFID (timeout {timeout}s)...")
-            id, text = reader.read()  # Bloqueante - espera hasta leer
-            resultado['rfid'] = str(id). strip()
-            print(f"[OK] RFID leído: {resultado['rfid']}")
-        except Exception as e:
-            resultado['error'] = str(e)
-            print(f"[ERROR] Error leyendo RFID: {e}")
-    
-    # Crear y arrancar thread de lectura
-    thread_lectura = threading.Thread(target=leer_con_timeout)
-    thread_lectura.daemon = True
-    thread_lectura. start()
-    
-    # Esperar con timeout
-    thread_lectura.join(timeout=timeout)
-    
-    # Verificar resultado
-    if thread_lectura.is_alive():
-        # Timeout alcanzado
-        print(f"[TIMEOUT] No se detectó tarjeta en {timeout}s")
-        # Nota: El thread queda esperando, pero al ser daemon se limpia automáticamente
+    # ADQUIRIR LOCK - Solo un thread puede leer RFID a la vez
+    if not rfid_lock.acquire(blocking=True, timeout=5):
+        print("[ERROR] No se pudo adquirir lock para leer RFID (otro proceso leyendo)")
         return None
     
-    if resultado['error']:
-        print(f"[ERROR] Error durante la lectura: {resultado['error']}")
-        return None
-    
-    return resultado['rfid']
-    
+    try:
+        print(f"[INFO] Esperando tarjeta RFID (timeout {timeout}s)...")
+        print("[DEBUG] Lock adquirido - iniciando lectura...")
+        
+        # Variables compartidas entre threads
+        resultado = {'rfid': None, 'error': None, 'completado': False}
+        
+        def leer_bloqueante():
+            """Thread interno que ejecuta reader. read() bloqueante"""
+            try:
+                id, text = reader.read()  # BLOQUEANTE
+                resultado['rfid'] = str(id). strip()
+                resultado['completado'] = True
+                print(f"[OK] RFID leído: {resultado['rfid']}")
+            except Exception as e:
+                resultado['error'] = str(e)
+                resultado['completado'] = True
+                print(f"[ERROR] Error leyendo RFID: {e}")
+        
+        # Crear thread de lectura
+        thread_lectura = threading.Thread(target=leer_bloqueante, daemon=True)
+        thread_lectura.start()
+        
+        # Esperar con timeout
+        thread_lectura.join(timeout=timeout)
+        
+        # Verificar si terminó
+        if not resultado['completado']:
+            print(f"[TIMEOUT] No se detectó tarjeta en {timeout}s")
+            return None
+        
+        if resultado['error']:
+            print(f"[ERROR] Error durante lectura: {resultado['error']}")
+            return None
+        
+        return resultado['rfid']
+        
+    finally:
+        # LIBERAR LOCK - Permitir que otro thread lea
+        rfid_lock.release()
+        print("[DEBUG] Lock liberado")
+
 def capturar_rostro():
     """Capturar rostro con la camara y extraer embedding"""
     try:
@@ -304,7 +322,7 @@ def capturar_rostro():
                     return embedding
             
             intentos += 1
-            time. sleep(0.3)
+            time.sleep(0.3)
         
         cap.release()
         print("[ERROR] No se detecto ningun rostro")
