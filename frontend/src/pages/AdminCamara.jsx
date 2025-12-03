@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import "./app.css";
+import "./AdminCamara.css";
 
-const API_URL = import.meta.env. VITE_API_URL || "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 function AdminCamara() {
   const navigate = useNavigate();
@@ -33,14 +33,14 @@ function AdminCamara() {
     return () => {
       // Limpiar stream al desmontar
       if (videoRef.current && videoRef.current.srcObject) {
-        videoRef.current.srcObject. getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject.getTracks().forEach(track => track. stop());
       }
     };
   }, [navigate]);
 
   const initCameraPreview = async () => {
     try {
-      const stream = await navigator. mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           width: { ideal: 640 },
           height: { ideal: 480 }
@@ -48,7 +48,7 @@ function AdminCamara() {
       });
 
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        videoRef.current. srcObject = stream;
         
         videoRef.current.onloadedmetadata = () => {
           videoRef.current.play();
@@ -84,14 +84,14 @@ function AdminCamara() {
         console.log("[OK] Rostro registrado correctamente");
         
         // Detener preview si existe
-        if (videoRef.current && videoRef. current.srcObject) {
-          videoRef.current.srcObject. getTracks().forEach(track => track.stop());
+        if (videoRef.current && videoRef.current.srcObject) {
+          videoRef.current.srcObject.getTracks().forEach(track => track.stop());
         }
         
         setExito(true);
       } else {
         console.error("[ERROR]", data.error);
-        setError(data.error || "Error al capturar rostro");
+        setError(data. error || "Error al capturar rostro");
       }
     } catch (err) {
       console.error("[ERROR] Error de conexión:", err);
@@ -112,13 +112,16 @@ function AdminCamara() {
 
   if (exito) {
     return (
-      <div className="container">
+      <div className="container success-container">
         <img src="/GAP_logo.jpg" alt="Logo" className="logo" />
-        <h2 className="title" style={{ color: "#28a745" }}>✓ Registro Completo</h2>
-        <p style={{ fontSize: "18px", marginBottom: "30px" }}>
-          El pasajero <strong>{nombrePasajero}</strong> ha sido registrado exitosamente. 
+        <h2 className="success-title">
+          <span className="success-icon">✓</span>
+          Registro Completo
+        </h2>
+        <p className="success-message">
+          El pasajero <strong>{nombrePasajero}</strong> ha sido registrado exitosamente.
         </p>
-        <button className="button" onClick={handleFinalizar}>
+        <button className="button button-primary" onClick={handleFinalizar}>
           Finalizar
         </button>
       </div>
@@ -130,85 +133,65 @@ function AdminCamara() {
       <img src="/GAP_logo.jpg" alt="Logo" className="logo" />
       <h2 className="title">Capturar Rostro</h2>
       
-      <p style={{ marginBottom: "20px", fontSize: "16px" }}>
-        Pasajero: <strong>{nombrePasajero}</strong>
+      <div className="pasajero-info">
+        <p>Pasajero: <strong>{nombrePasajero}</strong></p>
+      </div>
+
+      <p className="instrucciones">
+        Mire directamente a la cámara y mantenga el rostro visible
       </p>
 
-      <p style={{ marginBottom: "20px", color: "#666" }}>
-        Mire directamente a la cámara
-      </p>
-
-      {/* Preview (opcional - solo si el navegador tiene permisos) */}
-      {cameraPreviewAvailable ?  (
-        <div style={{ marginBottom: "20px" }}>
-          <video 
-            ref={videoRef} 
-            autoPlay 
-            playsInline
-            style={{
-              width: "100%",
-              maxWidth: "640px",
-              border: "2px solid #ddd",
-              borderRadius: "8px"
-            }}
-          />
-          <p style={{ color: "#28a745", marginTop: "10px", fontSize: "14px" }}>
-            ✓ Preview de cámara activo
-          </p>
-        </div>
-      ) : (
-        <div style={{
-          width: "100%",
-          maxWidth: "640px",
-          height: "480px",
-          backgroundColor: "#f0f0f0",
-          border: "2px dashed #ccc",
-          borderRadius: "8px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: "20px",
-          flexDirection: "column",
-          padding: "20px"
-        }}>
-          <p style={{ color: "#666", textAlign: "center" }}>
-            📷 Preview no disponible<br/>
-            <small>(La cámara del servidor se usará para el registro)</small>
-          </p>
-        </div>
-      )}
+      {/* Preview de cámara o placeholder */}
+      <div className="camera-container">
+        {cameraPreviewAvailable ?  (
+          <>
+            <div className="camera-preview">
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline
+              />
+            </div>
+            <div className="preview-status">
+              Preview de cámara activo
+            </div>
+          </>
+        ) : (
+          <div className="camera-placeholder">
+            <div className="camera-placeholder-icon">📷</div>
+            <div className="camera-placeholder-text">
+              <p>Preview no disponible</p>
+              <small>(La cámara del servidor se usará para el registro)</small>
+            </div>
+          </div>
+        )}
+      </div>
 
       {error && (
-        <div style={{ 
-          color: "red", 
-          marginBottom: "15px",
-          padding: "10px",
-          backgroundColor: "#ffe6e6",
-          borderRadius: "4px"
-        }}>
+        <div className="error-message">
           {error}
         </div>
       )}
 
       <button 
-        className="button" 
+        className="button button-primary" 
         onClick={handleCapturar}
         disabled={loading}
-        style={{ marginBottom: "15px" }}
       >
-        {loading ? "⏳ Capturando rostro..." : "📸 Capturar Rostro"}
+        {loading && <span className="spinner"></span>}
+        {loading ? "Capturando rostro..." : "📸 Capturar Rostro"}
       </button>
 
       {loading && (
-        <p style={{ color: "#007bff", fontSize: "14px" }}>
-          Procesando... esto puede tardar hasta 10 segundos
+        <p className="loading-text">
+          Procesando...  esto puede tardar hasta 10 segundos
         </p>
       )}
 
       <button 
-        className="button" 
+        className="button button-secondary" 
         onClick={() => navigate("/admin-panel")}
-        style={{ backgroundColor: "#6c757d" }}
+        disabled={loading}
       >
         Cancelar
       </button>
