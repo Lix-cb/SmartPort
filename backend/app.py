@@ -39,13 +39,25 @@ CORS(app)
 # CONFIGURACION MQTT
 # ========================================
 
-MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt.cool")
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt. cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC_VERIFICAR_RFID = "aeropuerto/verificar_rfid"  # ESP32 Puerta envia RFID
 MQTT_TOPIC_PUERTA_RESPUESTA = "aeropuerto/puerta/respuesta"  # Raspberry responde
 MQTT_TOPIC_PESO = "aeropuerto/peso"  # ESP32 Bascula envia peso
 
-mqtt_client = mqtt.Client(client_id="RaspberryPi_Aeropuerto")
+# ========================================
+# FIX para Python 3.13: Usar CallbackAPIVersion
+# ========================================
+try:
+    # Python 3.13+ requiere especificar la version del API
+    mqtt_client = mqtt.Client(
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION1,
+        client_id="RaspberryPi_Aeropuerto"
+    )
+except AttributeError:
+    # Fallback para versiones antiguas de paho-mqtt
+    mqtt_client = mqtt.Client(client_id="RaspberryPi_Aeropuerto")
+
 mqtt_conectado = False
 
 def on_connect(client, userdata, flags, rc):
@@ -91,7 +103,7 @@ def verificar_rfid_para_puerta(rfid_uid):
     """
     MODULO 3: Verificar si un RFID puede abrir la puerta fisica
     Valida que:
-    1. Tenga registro en accesos_puerta (paso check-in en Modulo 1)
+    1.  Tenga registro en accesos_puerta (paso check-in en Modulo 1)
     2. Estado = ABORDADO
     3. NO haya abierto la puerta antes (puerta_abierta = FALSE)
     """
@@ -111,7 +123,7 @@ def verificar_rfid_para_puerta(rfid_uid):
             SELECT p.id_pasajero, p.nombre_normalizado, p. estado,
                    a.id_acceso, a.puerta_abierta
             FROM pasajeros p
-            LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
+            LEFT JOIN accesos_puerta a ON p. id_pasajero = a. id_pasajero
             WHERE p.rfid_uid = %s
         """, (rfid_uid,))
         
@@ -187,8 +199,7 @@ mqtt_client.on_disconnect = on_disconnect
 mqtt_client.on_message = on_message
 
 # ========================================
-# MODULO 1: MQTT deshabilitado temporalmente
-# Descomentar en Modulo 2/3 cuando se requiera comunicacion MQTT
+# MODULO 1: MQTT con manejo de errores mejorado
 # ========================================
 try:
     print(f"[INFO] Conectando a MQTT: {MQTT_BROKER}:{MQTT_PORT}")
@@ -233,7 +244,7 @@ def leer_rfid(timeout=30):
     # Crear y arrancar thread de lectura
     thread_lectura = threading.Thread(target=leer_con_timeout)
     thread_lectura.daemon = True
-    thread_lectura.start()
+    thread_lectura. start()
     
     # Esperar con timeout
     thread_lectura.join(timeout=timeout)
@@ -638,7 +649,7 @@ def usuario_verificar_acceso():
         print(f"[OK] PASO 4: Similitud facial: {porcentaje_similitud:.2f}%")
         
         # PASO 5: Decidir si permitir acceso (umbral 60%)
-        if porcentaje_similitud >= 60.0:
+        if porcentaje_similitud >= 60. 0:
             print("="*60)
             print("[OK] ACCESO CONCEDIDO")
             print("="*60)
@@ -672,7 +683,7 @@ def usuario_verificar_acceso():
         else:
             print("="*60)
             print("[ERROR] ACCESO DENEGADO")
-            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:. 2f}% (minimo: 60%)")
+            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:.2f}% (minimo: 60%)")
             print("="*60 + "\n")
             
             return jsonify({
