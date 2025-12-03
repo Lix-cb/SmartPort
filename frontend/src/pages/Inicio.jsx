@@ -16,14 +16,14 @@ export default function Inicio() {
         onClick={() => navigate("/admin-login")}
         style={{ marginBottom: "20px" }}
       >
-        🔧 Modo Administrador
+        Modo Administrador
       </button>
       
       <button 
         className="button" 
         onClick={() => navigate("/usuario-acceso")}
       >
-        ✈️ Acceso a puerta
+        Verificacion de Acceso
       </button>
     </div>
   );
