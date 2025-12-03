@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <HX711.h>
-#include <LiquidCrystal_I2C.h>
+#include <LiquidCrystal_I2C. h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <time.h>
@@ -19,7 +19,7 @@ const char* ssid = "iPhone de Jorge";
 const char* password = "Arribalamaquina";
 
 const char* mqtt_server = "broker.mqtt.cool";
-const char* topic_peso = "aeropuerto/puerta1/bascula/peso";
+const char* topic_peso = "aeropuerto/peso";  // CORREGIDO: Sin "puerta1/bascula/"
 
 // LCD
 LiquidCrystal_I2C lcd(0x27, 16, 2);
@@ -31,11 +31,11 @@ PubSubClient client(espClient);
 // Calibration
 float calibration_factor = 236738.0;
 
-// Límites LEDs
+// Limites LEDs
 float limite_bajo = 0.1;
 float limite_alto = 2.0;
 
-// Control de envío
+// Control de envio
 bool pesoEnviado = false;
 
 const long gmtOffset_sec = -21600;
@@ -74,8 +74,8 @@ void setupWiFi() {
 }
 
 void reconnect() {
-  while (!client.connected()) {
-    if (client.connect("ESP8266_Celda")) return;
+  while (! client.connected()) {
+    if (client.connect("ESP8266_Bascula_Aeropuerto")) return;
     delay(500);
   }
 }
@@ -98,12 +98,12 @@ void setup() {
   delay(300);
   scale.set_scale(calibration_factor);
 
-  lcd.clear();
+  lcd. clear();
   lcd.print("Tare sin peso..");
   delay(800);
   scale.tare();
 
-  lcd.clear();
+  lcd. clear();
   lcd.print("Listo!");
   delay(400);
 
@@ -115,26 +115,23 @@ void setup() {
 
 void loop() {
 
-  if (!client.connected()) reconnect();
+  if (! client.connected()) reconnect();
   client.loop();
 
   if (scale.is_ready()) {
 
-    // LECTURA RÁPIDA DEL PESO — SIN FILTROS
     float peso_kg = scale.get_units(5);
 
-    // LCD INMEDIATO
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Peso:");
     lcd.setCursor(6, 0);
-    lcd.print(peso_kg, 3);
+    lcd. print(peso_kg, 3);
     lcd.print(" kg");
 
     Serial.print("Peso: ");
     Serial.println(peso_kg, 3);
 
-    // LEDs
     if (peso_kg >= limite_bajo && peso_kg <= limite_alto) {
       digitalWrite(LED_VERDE, HIGH);
       digitalWrite(LED_ROJO, LOW);
@@ -143,23 +140,16 @@ void loop() {
       digitalWrite(LED_ROJO, HIGH);
     }
 
-    // ------------------------------
-    //   ENVÍO MQTT DESPUÉS DE 8s
-    // ------------------------------
     if (peso_kg > 0.100 && !pesoEnviado) {
 
-      delay(8000);   // 🔥 ESPERA EXACTAMENTE 8 SEGUNDOS
+      delay(8000);
 
-      // Releer peso al final, para agarrar el peso correcto del momento
-      float peso_final = scale.get_units(10);
+      float peso_final = scale. get_units(10);
 
       String timestamp = getTimestamp();
 
-      String mensaje = "{";
-      mensaje += "\"device\":\"ESP8266_Celda\",";
-      mensaje += "\"peso_kg\":" + String(peso_final, 3) + ",";
-      mensaje += "\"timestamp\":\"" + timestamp + "\"";
-      mensaje += "}";
+      // FORMATO JSON SIMPLE (app.py espera solo el numero)
+      String mensaje = String(peso_final, 3);
 
       client.publish(topic_peso, mensaje.c_str());
       Serial.println("MQTT enviado: " + mensaje);
@@ -167,13 +157,12 @@ void loop() {
       pesoEnviado = true;
     }
 
-    // Reset si el peso baja
     if (peso_kg <= 0.100) {
       pesoEnviado = false;
     }
 
   } else {
-    lcd.clear();
+    lcd. clear();
     lcd.print("No HX711");
     digitalWrite(LED_VERDE, LOW);
     digitalWrite(LED_ROJO, HIGH);
