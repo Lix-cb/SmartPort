@@ -1,6 +1,9 @@
--- -----------------------------------------------------
+---- -----------------------------------------------------
 -- SCRIPT COMPLETO: BASE DE DATOS AEROPUERTO IOT v2.0
--- SISTEMA DE REGISTRO Y ACCESO CON RFID + BIOMETRÍA
+-- SISTEMA DE REGISTRO Y ACCESO CON RFID + BIOMETRIA
+-- MODULO 1: Registro biometrico
+-- MODULO 2: Control de peso equipaje
+-- MODULO 3: Control de puerta fisica
 -- -----------------------------------------------------
 
 -- -----------------------------------------------------
@@ -11,7 +14,7 @@ CREATE DATABASE aeropuerto;
 USE aeropuerto;
 
 -- -----------------------------------------------------
--- 2.  TABLA: admins
+-- 2. TABLA: admins
 -- RFID de administradores autorizados
 -- -----------------------------------------------------
 CREATE TABLE admins (
@@ -75,6 +78,7 @@ CREATE TABLE accesos_puerta (
     id_puerta INT NOT NULL,
     fecha_hora DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     porcentaje_similitud DECIMAL(5,2) DEFAULT NULL,  -- % de coincidencia facial
+    puerta_abierta BOOLEAN DEFAULT FALSE,  -- Modulo 3: Marca si ya uso la puerta fisica
 
     CONSTRAINT fk_acceso_pasajero
         FOREIGN KEY (id_pasajero)
@@ -83,6 +87,8 @@ CREATE TABLE accesos_puerta (
         
     CONSTRAINT uq_acceso_por_pasajero UNIQUE (id_pasajero)
 );
+
+CREATE INDEX idx_puerta_abierta ON accesos_puerta (puerta_abierta);
 
 -- -----------------------------------------------------
 -- 6. TABLA: pesos_equipaje
@@ -122,7 +128,7 @@ INSERT INTO puertas (nombre) VALUES ('P1');
 INSERT INTO vuelos (numero_vuelo, destino, hora_salida)
 VALUES (1234, 'CDMX', DATE_ADD(NOW(), INTERVAL 2 HOUR));
 
--- Pasajeros de prueba (sin RFID ni rostro aún - se registran desde admin)
+-- Pasajeros de prueba (sin RFID ni rostro aun - se registran desde admin)
 INSERT INTO pasajeros (nombre_normalizado, id_vuelo)
 VALUES
  ('JORGE CARDENAS BLANCO', 1),
@@ -138,7 +144,7 @@ GRANT ALL PRIVILEGES ON aeropuerto.* TO 'aero_user'@'localhost';
 FLUSH PRIVILEGES;
 
 -- -----------------------------------------------------
--- 10. VERIFICACIÓN
+-- 10. VERIFICACION
 -- -----------------------------------------------------
 SELECT 'Base de datos v2.0 creada exitosamente' AS status;
 SELECT COUNT(*) AS total_admins FROM admins;
