@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Inicio from "./pages/Inicio. jsx";
-import AdminLogin from "./pages/AdminLogin. jsx";
+import Inicio from "./pages/Inicio.jsx";
+import AdminLogin from "./pages/AdminLogin.jsx";
 import AdminPanel from "./pages/AdminPanel.jsx";
 import AdminRegistro from "./pages/AdminRegistro.jsx";
 import AdminRFID from "./pages/AdminRFID.jsx";
