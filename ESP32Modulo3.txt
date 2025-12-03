@@ -1,177 +1,164 @@
-#!/usr/bin/env python3
-"""
-Servidor de Autorización RFID
-==============================
-Este servidor se suscribe al broker MQTT, recibe los IDs RFID escaneados,
-valida si están autorizados y responde con "pass" o "no pass".
-"""
+#include <Arduino.h>
+#include <SPI.h>
+#include <MFRC522.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
 
-import paho.mqtt.client as mqtt
-import json
-import time
+// Pines RFID RC522 (ESP32)
+#define RST_PIN 22
+#define SS_PIN 21
 
-# ========== CONFIGURACIÓN ==========
-MQTT_BROKER = "broker.mqtt.cool"
-MQTT_PORT = 1883
-TOPIC_ACCESO = "aeropuerto/rfid/acceso"      # Topic donde llegan los RFID
-TOPIC_RESPUESTA = "aeropuerto/rfid/respuesta"  # Topic para enviar respuesta
+// Pin Servomotor
+#define MOTOR_PIN 13
 
-# ========== LISTA DE RFID AUTORIZADOS ==========
-# Agrega aquí los IDs decimales de las tarjetas autorizadas
-RFIDS_AUTORIZADOS = [
-    "1564707438"     
-]
+// WiFi
+const char* ssid = "iPhone de Jorge";
+const char* password = "Arribalamaquina";
 
-# ========== FUNCIONES DE CALLBACK ==========
+// MQTT
+const char* mqtt_server = "broker.mqtt.cool";
+const char* topic_verificar = "aeropuerto/verificar_rfid";
+const char* topic_respuesta = "aeropuerto/puerta/respuesta";
 
-def on_connect(client, userdata, flags, rc):
-    """Callback cuando se conecta al broker"""
-    if rc == 0:
-        print("✓ Conectado al broker MQTT exitosamente")
-        print(f"  Broker: {MQTT_BROKER}:{MQTT_PORT}")
-        # Suscribirse al topic de accesos RFID
-        client.subscribe(TOPIC_ACCESO)
-        print(f"✓ Suscrito al topic: {TOPIC_ACCESO}")
-        print("\n=== Servidor de Autorización Activo ===")
-        print(f"RFIDs autorizados en sistema: {len(RFIDS_AUTORIZADOS)}")
-        print("Esperando lecturas RFID...\n")
-    else:
-        print(f"✗ Error de conexión. Código: {rc}")
-        if rc == 1:
-            print("  Versión de protocolo incorrecta")
-        elif rc == 2:
-            print("  Identificador rechazado")
-        elif rc == 3:
-            print("  Servidor no disponible")
-        elif rc == 4:
-            print("  Usuario o contraseña incorrectos")
-        elif rc == 5:
-            print("  No autorizado")
+MFRC522 rfid(SS_PIN, RST_PIN);
+WiFiClient espClient;
+PubSubClient client(espClient);
 
+bool esperandoRespuesta = false;
+unsigned long tiempoUltimaLectura = 0;
+const unsigned long DELAY_LECTURAS = 3000;
 
-def on_message(client, userdata, msg):
-    """Callback cuando se recibe un mensaje"""
-    try:
-        # Decodificar el mensaje JSON
-        payload = msg.payload.decode('utf-8')
-        print(f"📨 Mensaje recibido en '{msg.topic}'")
-        print(f"   Payload: {payload}")
-        
-        # Parsear JSON
-        data = json.loads(payload)
-        device = data.get("device", "Desconocido")
-        serial_rfid = data.get("serial", "")
-        
-        print(f"   Device: {device}")
-        print(f"   RFID Serial: {serial_rfid}")
-        
-        # Validar si el RFID está autorizado
-        if serial_rfid in RFIDS_AUTORIZADOS:
-            respuesta = "pass"
-            print(f"   ✓ AUTORIZADO - Enviando '{respuesta}'")
-        else:
-            respuesta = "no pass"
-            print(f"   ✗ NO AUTORIZADO - Enviando '{respuesta}'")
-        
-        # Publicar respuesta
-        client.publish(TOPIC_RESPUESTA, respuesta)
-        print(f"   📤 Respuesta publicada en '{TOPIC_RESPUESTA}'\n")
-        
-    except json.JSONDecodeError as e:
-        print(f"✗ Error al decodificar JSON: {e}")
-        print(f"   Payload recibido: {msg.payload}\n")
-    except Exception as e:
-        print(f"✗ Error procesando mensaje: {e}\n")
+void callback(char* topic, byte* payload, unsigned int length) {
+  String mensaje = "";
+  for (unsigned int i = 0; i < length; i++) {
+    mensaje += (char)payload[i];
+  }
 
+  Serial.print("[MQTT] Respuesta recibida: ");
+  Serial.println(mensaje);
 
-def on_disconnect(client, userdata, rc):
-    """Callback cuando se desconecta del broker"""
-    if rc != 0:
-        print(f"⚠ Desconexión inesperada del broker. Código: {rc}")
-        print("  Intentando reconectar...")
+  if (String(topic) == topic_respuesta) {
+    if (mensaje == "ABRIR") {
+      Serial.println("[OK] ACCESO AUTORIZADO - Abriendo puerta");
+      abrirPuerta();
+    } else if (mensaje == "DENEGAR") {
+      Serial.println("[ERROR] ACCESO DENEGADO");
+    }
+    esperandoRespuesta = false;
+  }
+}
 
+void abrirPuerta() {
+  Serial.println("[MOTOR] Activando.. .");
+  digitalWrite(MOTOR_PIN, HIGH);
+  delay(3000);
+  digitalWrite(MOTOR_PIN, LOW);
+  Serial.println("[MOTOR] Desactivado");
+}
 
-def on_subscribe(client, userdata, mid, granted_qos):
-    """Callback cuando se completa la suscripción"""
-    print(f"✓ Suscripción confirmada (QoS: {granted_qos[0]})")
+void setupWiFi() {
+  Serial.print("[WiFi] Conectando a ");
+  Serial.println(ssid);
+  
+  WiFi.begin(ssid, password);
 
+  int intentos = 0;
+  while (WiFi.status() != WL_CONNECTED && intentos < 30) {
+    delay(500);
+    Serial.print(".");
+    intentos++;
+  }
 
-# ========== FUNCIONES AUXILIARES ==========
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n[WiFi] Conectado");
+    Serial.print("[WiFi] IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\n[WiFi] ERROR: No se pudo conectar");
+  }
+}
 
-def agregar_rfid_autorizado(rfid_id):
-    """Agrega un nuevo RFID a la lista de autorizados"""
-    if rfid_id not in RFIDS_AUTORIZADOS:
-        RFIDS_AUTORIZADOS.append(rfid_id)
-        print(f"✓ RFID agregado: {rfid_id}")
-        return True
-    else:
-        print(f"⚠ RFID ya existe: {rfid_id}")
-        return False
-
-
-def remover_rfid_autorizado(rfid_id):
-    """Remueve un RFID de la lista de autorizados"""
-    if rfid_id in RFIDS_AUTORIZADOS:
-        RFIDS_AUTORIZADOS.remove(rfid_id)
-        print(f"✓ RFID removido: {rfid_id}")
-        return True
-    else:
-        print(f"⚠ RFID no encontrado: {rfid_id}")
-        return False
-
-
-def listar_rfids_autorizados():
-    """Lista todos los RFIDs autorizados"""
-    print("\n=== RFIDs Autorizados ===")
-    if RFIDS_AUTORIZADOS:
-        for idx, rfid in enumerate(RFIDS_AUTORIZADOS, 1):
-            print(f"  {idx}. {rfid}")
-    else:
-        print("  (No hay RFIDs autorizados)")
-    print()
-
-
-# ========== FUNCIÓN PRINCIPAL ==========
-
-def main():
-    """Función principal del servidor"""
-    print("\n" + "="*50)
-    print("  SERVIDOR DE AUTORIZACIÓN RFID - AEROPUERTO")
-    print("="*50 + "\n")
+void reconnectMQTT() {
+  while (!client.connected()) {
+    Serial.print("[MQTT] Conectando a ");
+    Serial.print(mqtt_server);
+    Serial.println("...");
     
-    # Crear cliente MQTT
-    client = mqtt.Client(client_id="Python_Servidor_Autorizacion")
-    
-    # Configurar callbacks
-    client.on_connect = on_connect
-    client.on_message = on_message
-    client.on_disconnect = on_disconnect
-    client.on_subscribe = on_subscribe
-    
-    try:
-        # Conectar al broker
-        print(f"Conectando a {MQTT_BROKER}:{MQTT_PORT}...")
-        client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        
-        # Iniciar loop (bloqueante)
-        client.loop_forever()
-        
-    except KeyboardInterrupt:
-        print("\n\n⚠ Interrupción de usuario (Ctrl+C)")
-        print("Cerrando servidor...")
-        client.disconnect()
-        print("✓ Servidor cerrado correctamente")
-        
-    except ConnectionRefusedError:
-        print(f"✗ No se pudo conectar al broker {MQTT_BROKER}:{MQTT_PORT}")
-        print("  Verifica que el broker esté accesible")
-        
-    except Exception as e:
-        print(f"✗ Error inesperado: {e}")
-        client.disconnect()
+    if (client.connect("ESP32_Puerta_Aeropuerto")) {
+      Serial.println("[MQTT] Conectado");
+      client.subscribe(topic_respuesta);
+      Serial.print("[MQTT] Suscrito a: ");
+      Serial.println(topic_respuesta);
+    } else {
+      Serial.print("[MQTT] Fallo, rc=");
+      Serial.print(client.state());
+      Serial.println(" Reintentando en 5s...");
+      delay(5000);
+    }
+  }
+}
 
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\n=== ESP32 PUERTA - MODULO 3 ===");
 
-# ========== EJECUCIÓN ==========
+  pinMode(MOTOR_PIN, OUTPUT);
+  digitalWrite(MOTOR_PIN, LOW);
 
-if _name_ == "_main_":
-    main()
+  SPI.begin();
+  rfid.PCD_Init();
+  
+  Serial.println("[RFID] Lector RC522 inicializado");
+
+  setupWiFi();
+
+  client.setServer(mqtt_server, 1883);
+  client. setCallback(callback);
+
+  Serial.println("\n[SISTEMA] Listo.  Esperando tarjetas RFID...\n");
+}
+
+void loop() {
+  if (!client.connected()) {
+    reconnectMQTT();
+  }
+  client. loop();
+
+  if (esperandoRespuesta) {
+    return;
+  }
+
+  if (millis() - tiempoUltimaLectura < DELAY_LECTURAS) {
+    return;
+  }
+
+  if (! rfid.PICC_IsNewCardPresent()) {
+    return;
+  }
+
+  if (! rfid.PICC_ReadCardSerial()) {
+    return;
+  }
+
+  String rfid_uid = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    rfid_uid += String(rfid. uid.uidByte[i], HEX);
+  }
+  rfid_uid.toUpperCase();
+
+  Serial.print("[RFID] Tarjeta detectada: ");
+  Serial.println(rfid_uid);
+
+  Serial.print("[MQTT] Publicando a ");
+  Serial.print(topic_verificar);
+  Serial.print(": ");
+  Serial.println(rfid_uid);
+
+  client.publish(topic_verificar, rfid_uid.c_str());
+
+  esperandoRespuesta = true;
+  tiempoUltimaLectura = millis();
+
+  rfid.PICC_HaltA();
+  rfid. PCD_StopCrypto1();
+}
