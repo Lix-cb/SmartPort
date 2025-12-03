@@ -455,7 +455,7 @@ def usuario_verificar_acceso():
         print(f"Similitud facial: {porcentaje_similitud:. 2f}%")
         
         # PASO 5: Decidir si permitir acceso (umbral 60%)
-        if porcentaje_similitud >= 60. 0:
+        if porcentaje_similitud >= 60.0:
             print("✓ ACCESO CONCEDIDO")
             
             # Registrar acceso en BD
