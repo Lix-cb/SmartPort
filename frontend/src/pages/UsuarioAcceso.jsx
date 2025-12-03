@@ -5,7 +5,7 @@ const API_URL = "http://localhost:5000";
 
 export default function UsuarioAcceso() {
   const navigate = useNavigate();
-  const [estado, setEstado] = useState("esperando"); // esperando, verificando, exito, error
+  const [estado, setEstado] = useState("esperando");
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [pasajeroInfo, setPasajeroInfo] = useState(null);
@@ -24,23 +24,19 @@ export default function UsuarioAcceso() {
       const data = await response.json();
 
       if (response.ok && data.status === "ok" && data.acceso === "concedido") {
-        // ACCESO CONCEDIDO
         setEstado("exito");
         setPasajeroInfo(data.pasajero);
-        setMensaje(`¡Bienvenido ${data.pasajero.nombre}!`);
+        setMensaje(`Bienvenido ${data.pasajero.nombre}`);
         
-        // Volver al inicio después de 5 segundos
         setTimeout(() => {
           setEstado("esperando");
           setMensaje("");
           setPasajeroInfo(null);
         }, 5000);
       } else {
-        // ACCESO DENEGADO
         setEstado("error");
-        setMensaje(data.error || "Acceso denegado");
+        setMensaje(data. error || "Acceso denegado");
         
-        // Volver al inicio después de 3 segundos
         setTimeout(() => {
           setEstado("esperando");
           setMensaje("");
@@ -48,8 +44,8 @@ export default function UsuarioAcceso() {
       }
     } catch (err) {
       setEstado("error");
-      setMensaje("Error de conexión");
-      console. error(err);
+      setMensaje("Error de conexion");
+      console.error(err);
       
       setTimeout(() => {
         setEstado("esperando");
@@ -68,14 +64,14 @@ export default function UsuarioAcceso() {
         <>
           <h2 className="title">Control de Acceso</h2>
           <p style={{ marginBottom: "30px", fontSize: "16px", color: "#666" }}>
-            Escanee su RFID y mire a la cámara para acceder
+            Escanee su RFID y mire a la camara para verificacion
           </p>
           <button 
             className="button" 
             onClick={handleVerificar}
             disabled={loading}
           >
-            Iniciar Verificación
+            Iniciar Verificacion
           </button>
         </>
       )}
@@ -84,14 +80,14 @@ export default function UsuarioAcceso() {
         <>
           <h2 className="title">Verificando... </h2>
           <p style={{ fontSize: "18px", color: "#666" }}>{mensaje}</p>
-          <div className="spinner" style={{ margin: "30px auto" }}>⏳</div>
+          <div className="spinner" style={{ margin: "30px auto" }}>Procesando...</div>
         </>
       )}
       
       {estado === "exito" && pasajeroInfo && (
         <>
           <h2 className="title" style={{ color: "#28a745" }}>
-            ✅ {mensaje}
+            {mensaje}
           </h2>
           <div style={{ 
             backgroundColor: "#d4edda", 
@@ -103,10 +99,9 @@ export default function UsuarioAcceso() {
           }}>
             <p><strong>Vuelo:</strong> {pasajeroInfo.vuelo}</p>
             <p><strong>Destino:</strong> {pasajeroInfo.destino}</p>
-            <p><strong>Puerta:</strong> {pasajeroInfo.puerta}</p>
           </div>
           <p style={{ marginTop: "20px", color: "#666" }}>
-            Puede abordar su vuelo.  Buen viaje ✈️
+            Verifique su puerta de embarque en las pantallas del aeropuerto. 
           </p>
         </>
       )}
@@ -114,7 +109,7 @@ export default function UsuarioAcceso() {
       {estado === "error" && (
         <>
           <h2 className="title" style={{ color: "#dc3545" }}>
-            ❌ Acceso Denegado
+            Acceso Denegado
           </h2>
           <p style={{ fontSize: "18px", color: "#dc3545", marginTop: "20px" }}>
             {mensaje}
@@ -134,7 +129,7 @@ export default function UsuarioAcceso() {
           padding: "10px 20px"
         }}
       >
-        ← Volver
+        Volver
       </button>
     </div>
   );
