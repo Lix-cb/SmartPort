@@ -191,13 +191,13 @@ mqtt_client.on_message = on_message
 # Descomentar en Modulo 2/3 cuando se requiera comunicacion MQTT
 # ========================================
 try:
-    print("[INFO] MQTT deshabilitado en Modulo 1 (no requerido para registro)")
-    mqtt_conectado = False
-    # Descomentar las siguientes lineas en Modulo 2/3:
-    # mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-    # mqtt_client.loop_start()
+    print(f"[INFO] Conectando a MQTT: {MQTT_BROKER}:{MQTT_PORT}")
+    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    mqtt_client.loop_start()
+    print("[OK] MQTT habilitado para Modulos 2 y 3")
 except Exception as e:
     print(f"[WARNING] MQTT no disponible: {e}")
+    print("[INFO] Solo Modulo 1 estara operativo")
     mqtt_conectado = False
 
 # ========================================
