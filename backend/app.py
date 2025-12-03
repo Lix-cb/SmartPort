@@ -282,25 +282,48 @@ def leer_rfid(timeout=30):
 
 def capturar_rostro():
     """Capturar rostro con la camara y extraer embedding"""
+    cap = None
     try:
         print("[INFO] Iniciando captura de rostro...")
-        cap = cv2.VideoCapture(0)
         
-        if not cap.isOpened():
-            print("[ERROR] No se pudo acceder a la camara")
+        # Usar explícitamente /dev/video0 (Logitech HD Pro Webcam)
+        print("[DEBUG] Abriendo /dev/video0...")
+        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)  # Forzar V4L2 backend
+        
+        if not cap. isOpened():
+            print("[ERROR] No se pudo acceder a /dev/video0")
             return None
         
+        print("[OK] Cámara abierta correctamente")
+        
+        # Configurar resolución
+        cap.set(cv2. CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        
         # Dar tiempo a la camara para inicializar
-        time.sleep(1)
+        print("[INFO] Esperando inicialización de cámara...")
+        time.sleep(2)
+        
+        # Descartar primeros frames (pueden estar en negro)
+        print("[DEBUG] Descartando primeros frames...")
+        for i in range(5):
+            ret, _ = cap.read()
+            if not ret:
+                print(f"[WARNING] Frame de calentamiento {i+1} falló")
         
         intentos = 0
         max_intentos = 30  # 30 frames = ~10 segundos
         
+        print("[INFO] Buscando rostro...")
+        
         while intentos < max_intentos:
-            ret, frame = cap. read()
+            ret, frame = cap.read()
             
-            if not ret:
+            if not ret or frame is None or frame.size == 0:
+                print(f"[WARNING] Intento {intentos+1}: Frame inválido")
                 intentos += 1
+                time.sleep(0.3)
                 continue
             
             # Convertir BGR (OpenCV) a RGB (face_recognition)
@@ -320,16 +343,22 @@ def capturar_rostro():
                     cap.release()
                     print("[OK] Embedding facial extraido correctamente")
                     return embedding
+                else:
+                    print("[WARNING] Rostro detectado pero no se pudo extraer encoding")
             
             intentos += 1
             time.sleep(0.3)
         
         cap.release()
-        print("[ERROR] No se detecto ningun rostro")
+        print("[ERROR] No se detecto ningun rostro después de 30 intentos")
         return None
         
     except Exception as e:
         print(f"[ERROR] Error capturando rostro: {e}")
+        import traceback
+        traceback.print_exc()
+        if cap:
+            cap.release()
         return None
 
 # ========================================
