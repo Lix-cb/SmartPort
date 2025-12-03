@@ -204,29 +204,36 @@ except Exception as e:
 # FUNCIONES AUXILIARES
 # ========================================
 
-def leer_rfid(timeout=10):
-    """Leer tarjeta RFID (timeout en segundos)"""
+def leer_rfid(timeout=30):
+    """Leer tarjeta RFID con timeout usando SimpleMFRC522. read() bloqueante"""
     if not RFID_DISPONIBLE:
-        # Modo simulacion
+        # Modo simulación
         return "SIM" + str(int(time.time() * 1000))[-8:]
     
     try:
-        print("[INFO] Esperando tarjeta RFID...")
-        start_time = time.time()
+        import signal
         
-        while (time.time() - start_time) < timeout:
-            try:
-                uid, _ = reader.read_no_block()
-                if uid:
-                    rfid_str = str(uid). strip()
-                    print(f"[OK] RFID leido: {rfid_str}")
-                    return rfid_str
-            except:
-                pass
-            time.sleep(0.1)
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Timeout leyendo RFID")
         
-        print("[TIMEOUT] Timeout leyendo RFID")
-        return None
+        # Configurar timeout con señal UNIX
+        signal.signal(signal. SIGALRM, timeout_handler)
+        signal.alarm(timeout)
+        
+        try:
+            print(f"[INFO] Esperando tarjeta RFID (timeout {timeout}s)...")
+            id, text = reader.read()  # ✅ BLOQUEANTE - espera hasta leer
+            signal.alarm(0)  # Cancelar timeout
+            
+            rfid_str = str(id). strip()
+            print(f"[OK] RFID leído: {rfid_str}")
+            return rfid_str
+            
+        except TimeoutError:
+            signal.alarm(0)
+            print(f"[TIMEOUT] No se detectó tarjeta en {timeout}s")
+            return None
+            
     except Exception as e:
         print(f"[ERROR] Error leyendo RFID: {e}")
         return None
