@@ -63,10 +63,10 @@ def registrar_admin(rfid_uid, nombre):
     
     try:
         cursor = conn.cursor()
-        cursor. execute("""
+        cursor.execute("""
             INSERT INTO admins (rfid_uid, nombre)
             VALUES (%s, %s)
-        """, (rfid_uid, nombre. upper()))
+        """, (rfid_uid, nombre. upper(). strip())) 
         
         conn.commit()
         return True
@@ -75,7 +75,7 @@ def registrar_admin(rfid_uid, nombre):
         return False
     finally:
         cursor.close()
-        conn. close()
+        conn.close()
 
 def listar_admins():
     """Obtener lista de todos los admins"""
