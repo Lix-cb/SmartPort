@@ -205,39 +205,52 @@ except Exception as e:
 # ========================================
 
 def leer_rfid(timeout=30):
-    """Leer tarjeta RFID con timeout usando SimpleMFRC522. read() bloqueante"""
+    """Leer tarjeta RFID con timeout usando SimpleMFRC522. read() bloqueante
+    
+    Compatible con multithreading (Flask debug mode)
+    """
     if not RFID_DISPONIBLE:
         # Modo simulación
-        return "SIM" + str(int(time.time() * 1000))[-8:]
+        simulated_id = "SIM" + str(int(time.time() * 1000))[-8:]
+        print(f"[SIMULACION] RFID generado: {simulated_id}")
+        return simulated_id
     
-    try:
-        import signal
-        
-        def timeout_handler(signum, frame):
-            raise TimeoutError("Timeout leyendo RFID")
-        
-        # Configurar timeout con señal UNIX
-        signal.signal(signal. SIGALRM, timeout_handler)
-        signal.alarm(timeout)
-        
+    import threading
+    
+    resultado = {'rfid': None, 'error': None}
+    
+    def leer_con_timeout():
+        """Thread que ejecuta la lectura bloqueante"""
         try:
             print(f"[INFO] Esperando tarjeta RFID (timeout {timeout}s)...")
-            id, text = reader.read()  # ✅ BLOQUEANTE - espera hasta leer
-            signal.alarm(0)  # Cancelar timeout
-            
-            rfid_str = str(id). strip()
-            print(f"[OK] RFID leído: {rfid_str}")
-            return rfid_str
-            
-        except TimeoutError:
-            signal.alarm(0)
-            print(f"[TIMEOUT] No se detectó tarjeta en {timeout}s")
-            return None
-            
-    except Exception as e:
-        print(f"[ERROR] Error leyendo RFID: {e}")
+            id, text = reader.read()  # Bloqueante - espera hasta leer
+            resultado['rfid'] = str(id). strip()
+            print(f"[OK] RFID leído: {resultado['rfid']}")
+        except Exception as e:
+            resultado['error'] = str(e)
+            print(f"[ERROR] Error leyendo RFID: {e}")
+    
+    # Crear y arrancar thread de lectura
+    thread_lectura = threading.Thread(target=leer_con_timeout)
+    thread_lectura.daemon = True
+    thread_lectura.start()
+    
+    # Esperar con timeout
+    thread_lectura.join(timeout=timeout)
+    
+    # Verificar resultado
+    if thread_lectura.is_alive():
+        # Timeout alcanzado
+        print(f"[TIMEOUT] No se detectó tarjeta en {timeout}s")
+        # Nota: El thread queda esperando, pero al ser daemon se limpia automáticamente
         return None
-
+    
+    if resultado['error']:
+        print(f"[ERROR] Error durante la lectura: {resultado['error']}")
+        return None
+    
+    return resultado['rfid']
+    
 def capturar_rostro():
     """Capturar rostro con la camara y extraer embedding"""
     try:
