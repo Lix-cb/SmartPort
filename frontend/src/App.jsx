@@ -1,15 +1,28 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import BuscarVuelo from "./pages/BuscarVuelo.jsx";
-import RFID from "./pages/RFID.jsx";
-import Camara from "./pages/Camara.jsx";
+import Inicio from "./pages/Inicio. jsx";
+import AdminLogin from "./pages/AdminLogin. jsx";
+import AdminPanel from "./pages/AdminPanel.jsx";
+import AdminRegistro from "./pages/AdminRegistro.jsx";
+import AdminRFID from "./pages/AdminRFID.jsx";
+import AdminCamara from "./pages/AdminCamara.jsx";
+import UsuarioAcceso from "./pages/UsuarioAcceso.jsx";
 
 export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<BuscarVuelo />} />
-        <Route path="/rfid" element={<RFID />} />
-        <Route path="/camara" element={<Camara />} />
+        {/* Pantalla inicial */}
+        <Route path="/" element={<Inicio />} />
+        
+        {/* Flujo Administrador */}
+        <Route path="/admin-login" element={<AdminLogin />} />
+        <Route path="/admin-panel" element={<AdminPanel />} />
+        <Route path="/admin-registro" element={<AdminRegistro />} />
+        <Route path="/admin-rfid" element={<AdminRFID />} />
+        <Route path="/admin-camara" element={<AdminCamara />} />
+        
+        {/* Flujo Usuario */}
+        <Route path="/usuario-acceso" element={<UsuarioAcceso />} />
       </Routes>
     </Router>
   );
