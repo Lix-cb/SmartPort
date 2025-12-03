@@ -1,92 +1,87 @@
-body {
-  background-color: #f5f6fa;
-  font-family: Arial, sans-serif;
+/* SmartPort v2.0 - Estilos globales */
+
+* {
   margin: 0;
   padding: 0;
+  box-sizing: border-box;
 }
 
-.container,
-.camera-container {
-  width: 90%;
-  max-width: 400px;
-  margin: 40px auto;
-  text-align: center;
-}
-
-.logo {
-  width: 150px;
-  margin: 10px auto 20px;
-}
-
-.logo-small {
-  width: 110px;
-  margin-bottom: 15px;
-}
-
-.title {
-  font-size: 26px;
-  margin-bottom: 20px;
-  color: #333;
-  font-weight: 600;
-}
-
-.input {
-  width: 100%;
-  padding: 12px;
-  margin-bottom: 15px;
-  border-radius: 8px;
-  border: 1px solid #ccc;
-  font-size: 16px;
-}
-
-.button {
-  width: 100%;
-  padding: 12px;
-  margin-top: 10px;
-  border: none;
-  border-radius: 8px;
-  background: #0066ff;
-  color: white;
-  font-size: 16px;
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.button:hover {
-  background: #0052cc;
-}
-
-.camera-frame {
-  width: 100%;
-  height: 320px;
-  overflow: hidden;
-  border-radius: 12px;
-  margin: 20px 0;
-  background-color: black;
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
-.camera-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.container {
+  background: white;
+  border-radius: 20px;
+  padding: 40px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
 }
 
-.confirmation-box {
-  margin-top: 30px;
+. logo {
+  width: 120px;
+  height: auto;
+  margin-bottom: 20px;
 }
 
-.confirm-title {
+.title {
   font-size: 28px;
-  color: #222;
-  margin-bottom: 10px;
+  color: #333;
+  margin-bottom: 20px;
 }
 
-.confirm-text {
+.input {
+  width: 100%;
+  padding: 15px;
+  margin-bottom: 15px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
   font-size: 16px;
-  color: #555;
-  margin-bottom: 25px;
-  padding: 0 10px;
+  transition: border-color 0.3s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.button {
+  width: 100%;
+  padding: 15px;
+  background-color: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.button:hover:not(:disabled) {
+  background-color: #5568d3;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.spinner {
+  font-size: 40px;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
