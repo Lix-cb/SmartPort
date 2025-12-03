@@ -1,6 +1,10 @@
 """
 db.py - Modulo de conexion y operaciones con la base de datos
-SmartPort v2.0 - MODULO 1
+SmartPort v2.0
+
+MODULO 1: Funciones de registro y validacion biometrica
+MODULO 2: Funciones de registro de peso
+MODULO 3: Funciones de verificacion de puerta fisica
 """
 
 import mysql.connector
@@ -59,7 +63,7 @@ def registrar_admin(rfid_uid, nombre):
     
     try:
         cursor = conn.cursor()
-        cursor. execute("""
+        cursor.execute("""
             INSERT INTO admins (rfid_uid, nombre)
             VALUES (%s, %s)
         """, (rfid_uid, nombre. upper()))
@@ -71,7 +75,7 @@ def registrar_admin(rfid_uid, nombre):
         return False
     finally:
         cursor.close()
-        conn.close()
+        conn. close()
 
 def listar_admins():
     """Obtener lista de todos los admins"""
@@ -80,8 +84,8 @@ def listar_admins():
         return []
     
     try:
-        cursor = conn.cursor(dictionary=True)
-        cursor. execute("""
+        cursor = conn. cursor(dictionary=True)
+        cursor.execute("""
             SELECT id_admin, nombre, rfid_uid, fecha_registro 
             FROM admins 
             ORDER BY fecha_registro DESC
@@ -116,7 +120,7 @@ def buscar_o_crear_vuelo(numero_vuelo, destino="DESTINO", hora_salida=None):
             WHERE numero_vuelo = %s
         """, (numero_vuelo,))
         
-        vuelo = cursor.fetchone()
+        vuelo = cursor. fetchone()
         
         if vuelo:
             return vuelo
@@ -230,7 +234,7 @@ def registrar_rostro_pasajero(id_pasajero, embedding):
         cursor = conn.cursor()
         
         # Serializar el embedding (numpy array) a bytes
-        embedding_bytes = pickle.dumps(embedding)
+        embedding_bytes = pickle. dumps(embedding)
         
         cursor.execute("""
             UPDATE pasajeros 
@@ -284,8 +288,16 @@ def buscar_pasajero_por_rfid(rfid_uid):
 
 def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
     """
-    Registrar validacion exitosa en BD (Modulo 1)
+    MODULO 1: Registrar validacion exitosa en BD
     Activa bandera que sera verificada en Modulo 3 para abrir puerta fisica
+    
+    Args:
+        id_pasajero: ID del pasajero validado
+        porcentaje_similitud: Porcentaje de coincidencia facial
+        id_puerta: ID de la puerta (default 1)
+    
+    Returns:
+        bool: True si se registro correctamente, False en caso contrario
     """
     conn = get_db_connection()
     if not conn:
@@ -307,8 +319,8 @@ def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
         
         # Registrar nuevo acceso
         cursor.execute("""
-            INSERT INTO accesos_puerta (id_pasajero, id_puerta, porcentaje_similitud)
-            VALUES (%s, %s, %s)
+            INSERT INTO accesos_puerta (id_pasajero, id_puerta, porcentaje_similitud, puerta_abierta)
+            VALUES (%s, %s, %s, FALSE)
         """, (id_pasajero, id_puerta, porcentaje_similitud))
         
         # Actualizar estado del pasajero (bandera para Modulo 3)
@@ -328,6 +340,136 @@ def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
         cursor.close()
         conn.close()
 
+def verificar_acceso_puerta(rfid_uid):
+    """
+    MODULO 3: Verificar si un RFID puede abrir la puerta fisica
+    
+    Valida:
+    1. Que exista registro en accesos_puerta (check-in completado en Modulo 1)
+    2. Que el estado sea ABORDADO
+    3. Que NO haya usado la puerta antes (puerta_abierta = FALSE)
+    
+    Args:
+        rfid_uid: UID de la tarjeta RFID
+    
+    Returns:
+        dict: Informacion del acceso si es valido, None si no
+    """
+    conn = get_db_connection()
+    if not conn:
+        return None
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT p.id_pasajero, p.nombre_normalizado, p.estado,
+                   a.id_acceso, a.puerta_abierta, a. porcentaje_similitud
+            FROM pasajeros p
+            LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
+            WHERE p.rfid_uid = %s
+        """, (rfid_uid,))
+        
+        resultado = cursor.fetchone()
+        
+        if not resultado:
+            print(f"[ERROR] RFID {rfid_uid} no encontrado")
+            return None
+        
+        if not resultado['id_acceso']:
+            print(f"[ERROR] RFID {rfid_uid} sin check-in completado")
+            return None
+        
+        if resultado['puerta_abierta']:
+            print(f"[ERROR] RFID {rfid_uid} ya fue usado para abrir puerta")
+            return None
+        
+        if resultado['estado'] != 'ABORDADO':
+            print(f"[ERROR] RFID {rfid_uid} estado incorrecto: {resultado['estado']}")
+            return None
+        
+        return resultado
+        
+    except Error as e:
+        print(f"[ERROR] Error verificando acceso puerta: {e}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+def marcar_puerta_usada(id_acceso):
+    """
+    MODULO 3: Marcar que el pasajero ya uso la puerta fisica
+    Evita que pueda abrir la puerta una segunda vez
+    
+    Args:
+        id_acceso: ID del registro en accesos_puerta
+    
+    Returns:
+        bool: True si se marco correctamente, False en caso contrario
+    """
+    conn = get_db_connection()
+    if not conn:
+        return False
+    
+    try:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE accesos_puerta 
+            SET puerta_abierta = TRUE 
+            WHERE id_acceso = %s
+        """, (id_acceso,))
+        
+        conn.commit()
+        
+        if cursor.rowcount > 0:
+            print(f"[OK] Puerta marcada como usada - ID Acceso: {id_acceso}")
+            return True
+        else:
+            print(f"[ERROR] No se encontro registro con ID Acceso: {id_acceso}")
+            return False
+            
+    except Error as e:
+        print(f"[ERROR] Error marcando puerta usada: {e}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def registrar_peso(peso_kg):
+    """
+    MODULO 2: Registrar peso recibido de ESP32 Bascula
+    
+    Args:
+        peso_kg: Peso en kilogramos
+    
+    Returns:
+        bool: True si se registro correctamente, False en caso contrario
+    """
+    conn = get_db_connection()
+    if not conn:
+        return False
+    
+    try:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO pesos_equipaje (peso_kg)
+            VALUES (%s)
+        """, (peso_kg,))
+        
+        conn.commit()
+        print(f"[OK] Peso registrado: {peso_kg} kg")
+        return True
+        
+    except Error as e:
+        print(f"[ERROR] Error registrando peso: {e}")
+        return False
+    finally:
+        cursor.close()
+        conn. close()
+
 # ========================================
 # FUNCION AUXILIAR
 # ========================================
@@ -336,6 +478,13 @@ def calcular_similitud_facial(embedding1, embedding2):
     """
     Calcular similitud entre dos embeddings faciales
     Usa distancia euclidiana y la convierte a porcentaje
+    
+    Args:
+        embedding1: Primer embedding (numpy array o lista)
+        embedding2: Segundo embedding (numpy array o lista)
+    
+    Returns:
+        float: Porcentaje de similitud (0-100)
     """
     try:
         # Convertir a numpy arrays si no lo son
@@ -343,7 +492,7 @@ def calcular_similitud_facial(embedding1, embedding2):
         emb2 = np.array(embedding2)
         
         # Calcular distancia euclidiana
-        distancia = np.linalg.norm(emb1 - emb2)
+        distancia = np.linalg. norm(emb1 - emb2)
         
         # Convertir a porcentaje de similitud
         # Distancia menor = mayor similitud
