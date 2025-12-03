@@ -1,6 +1,6 @@
 """
 db.py - Modulo de conexion y operaciones con la base de datos
-SmartPort v2.0
+SmartPort v2.0 - OPTIMIZADO
 
 MODULO 1: Funciones de registro y validacion biometrica
 MODULO 2: Funciones de registro de peso
@@ -63,7 +63,7 @@ def registrar_admin(rfid_uid, nombre):
     
     try:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor. execute("""
             INSERT INTO admins (rfid_uid, nombre)
             VALUES (%s, %s)
         """, (rfid_uid, nombre. upper()))
@@ -104,8 +104,11 @@ def listar_admins():
 # FUNCIONES PARA VUELOS
 # ========================================
 
-def buscar_o_crear_vuelo(numero_vuelo, destino="DESTINO", hora_salida=None):
-    """Buscar vuelo o crearlo si no existe"""
+def buscar_o_crear_vuelo(numero_vuelo, destino="DESTINO"):
+    """
+    Buscar vuelo o crearlo si no existe
+    numero_vuelo ES la clave primaria (no auto_increment)
+    """
     conn = get_db_connection()
     if not conn:
         return None
@@ -115,40 +118,30 @@ def buscar_o_crear_vuelo(numero_vuelo, destino="DESTINO", hora_salida=None):
         
         # Buscar vuelo existente
         cursor.execute("""
-            SELECT id_vuelo, numero_vuelo, destino, hora_salida 
+            SELECT numero_vuelo, destino 
             FROM vuelos 
             WHERE numero_vuelo = %s
         """, (numero_vuelo,))
         
-        vuelo = cursor. fetchone()
+        vuelo = cursor.fetchone()
         
         if vuelo:
             return vuelo
         
         # Si no existe, crear uno nuevo
-        if not hora_salida:
-            hora_salida = "DATE_ADD(NOW(), INTERVAL 2 HOUR)"
-            cursor.execute(f"""
-                INSERT INTO vuelos (numero_vuelo, destino, hora_salida)
-                VALUES (%s, %s, {hora_salida})
-            """, (numero_vuelo, destino))
-        else:
-            cursor.execute("""
-                INSERT INTO vuelos (numero_vuelo, destino, hora_salida)
-                VALUES (%s, %s, %s)
-            """, (numero_vuelo, destino, hora_salida))
+        cursor.execute("""
+            INSERT INTO vuelos (numero_vuelo, destino)
+            VALUES (%s, %s)
+        """, (numero_vuelo, destino))
         
         conn.commit()
-        id_vuelo = cursor.lastrowid
         
-        # Obtener el vuelo creado
-        cursor.execute("""
-            SELECT id_vuelo, numero_vuelo, destino, hora_salida 
-            FROM vuelos 
-            WHERE id_vuelo = %s
-        """, (id_vuelo,))
+        # Retornar el vuelo creado
+        return {
+            'numero_vuelo': numero_vuelo,
+            'destino': destino
+        }
         
-        return cursor.fetchone()
     except Error as e:
         print(f"[ERROR] Error en buscar_o_crear_vuelo: {e}")
         return None
@@ -177,9 +170,9 @@ def crear_pasajero(nombre, numero_vuelo):
         # Crear pasajero
         nombre_norm = nombre.upper(). strip()
         cursor.execute("""
-            INSERT INTO pasajeros (nombre_normalizado, id_vuelo)
+            INSERT INTO pasajeros (nombre_normalizado, numero_vuelo)
             VALUES (%s, %s)
-        """, (nombre_norm, vuelo['id_vuelo']))
+        """, (nombre_norm, vuelo['numero_vuelo']))
         
         conn.commit()
         id_pasajero = cursor.lastrowid
@@ -187,9 +180,9 @@ def crear_pasajero(nombre, numero_vuelo):
         # Obtener datos completos
         cursor.execute("""
             SELECT p.id_pasajero, p.nombre_normalizado, p. rfid_uid, p.estado,
-                   v.numero_vuelo, v.destino, v.hora_salida
+                   v.numero_vuelo, v.destino
             FROM pasajeros p
-            JOIN vuelos v ON p.id_vuelo = v.id_vuelo
+            JOIN vuelos v ON p.numero_vuelo = v.numero_vuelo
             WHERE p.id_pasajero = %s
         """, (id_pasajero,))
         
@@ -264,11 +257,11 @@ def buscar_pasajero_por_rfid(rfid_uid):
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT p.id_pasajero, p.nombre_normalizado, p. rfid_uid, 
+            SELECT p.id_pasajero, p.nombre_normalizado, p.rfid_uid, 
                    p.rostro_embedding, p.estado,
-                   v.numero_vuelo, v.destino, v.hora_salida, v.puerta_asignada
+                   v.numero_vuelo, v.destino
             FROM pasajeros p
-            JOIN vuelos v ON p.id_vuelo = v.id_vuelo
+            JOIN vuelos v ON p.numero_vuelo = v.numero_vuelo
             WHERE p.rfid_uid = %s
         """, (rfid_uid,))
         
@@ -286,7 +279,7 @@ def buscar_pasajero_por_rfid(rfid_uid):
         cursor.close()
         conn.close()
 
-def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
+def registrar_acceso(id_pasajero, porcentaje_similitud):
     """
     MODULO 1: Registrar validacion exitosa en BD
     Activa bandera que sera verificada en Modulo 3 para abrir puerta fisica
@@ -294,7 +287,6 @@ def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
     Args:
         id_pasajero: ID del pasajero validado
         porcentaje_similitud: Porcentaje de coincidencia facial
-        id_puerta: ID de la puerta (default 1)
     
     Returns:
         bool: True si se registro correctamente, False en caso contrario
@@ -319,9 +311,9 @@ def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
         
         # Registrar nuevo acceso
         cursor.execute("""
-            INSERT INTO accesos_puerta (id_pasajero, id_puerta, porcentaje_similitud, puerta_abierta)
-            VALUES (%s, %s, %s, FALSE)
-        """, (id_pasajero, id_puerta, porcentaje_similitud))
+            INSERT INTO accesos_puerta (id_pasajero, porcentaje_similitud, puerta_abierta)
+            VALUES (%s, %s, FALSE)
+        """, (id_pasajero, porcentaje_similitud))
         
         # Actualizar estado del pasajero (bandera para Modulo 3)
         cursor.execute("""
@@ -331,7 +323,7 @@ def registrar_acceso(id_pasajero, porcentaje_similitud, id_puerta=1):
         """, (id_pasajero,))
         
         conn.commit()
-        print(f"[OK] Acceso registrado - ID Pasajero: {id_pasajero}, Similitud: {porcentaje_similitud:.2f}%")
+        print(f"[OK] Acceso registrado - ID Pasajero: {id_pasajero}, Similitud: {porcentaje_similitud:. 2f}%")
         return True
     except Error as e:
         print(f"[ERROR] Error registrando acceso: {e}")
@@ -363,8 +355,8 @@ def verificar_acceso_puerta(rfid_uid):
         cursor = conn.cursor(dictionary=True)
         
         cursor.execute("""
-            SELECT p.id_pasajero, p.nombre_normalizado, p.estado,
-                   a.id_acceso, a.puerta_abierta, a. porcentaje_similitud
+            SELECT p.id_pasajero, p.nombre_normalizado, p. estado,
+                   a.id_acceso, a.puerta_abierta, a.porcentaje_similitud
             FROM pasajeros p
             LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
             WHERE p.rfid_uid = %s
@@ -452,7 +444,7 @@ def registrar_peso(peso_kg):
         return False
     
     try:
-        cursor = conn.cursor()
+        cursor = conn. cursor()
         
         cursor.execute("""
             INSERT INTO pesos_equipaje (peso_kg)
@@ -492,7 +484,7 @@ def calcular_similitud_facial(embedding1, embedding2):
         emb2 = np.array(embedding2)
         
         # Calcular distancia euclidiana
-        distancia = np.linalg. norm(emb1 - emb2)
+        distancia = np.linalg.norm(emb1 - emb2)
         
         # Convertir a porcentaje de similitud
         # Distancia menor = mayor similitud
