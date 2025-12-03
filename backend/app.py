@@ -286,45 +286,45 @@ def capturar_rostro():
     try:
         print("[INFO] Iniciando captura de rostro...")
         
-        # Usar explícitamente /dev/video0 (Logitech HD Pro Webcam)
-        print("[DEBUG] Abriendo /dev/video0...")
-        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)  # Forzar V4L2 backend
+        # Usar explícitamente /dev/video0 con backend V4L2 (Logitech HD Pro Webcam)
+        print("[DEBUG] Abriendo /dev/video0 con V4L2...")
+        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
         
-        if not cap. isOpened():
+        if not cap.isOpened():
             print("[ERROR] No se pudo acceder a /dev/video0")
             return None
         
         print("[OK] Cámara abierta correctamente")
         
-        # Configurar resolución
-        cap.set(cv2. CAP_PROP_FRAME_WIDTH, 640)
+        # Configurar resolución óptima
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         cap.set(cv2.CAP_PROP_FPS, 30)
         
         # Dar tiempo a la camara para inicializar
-        print("[INFO] Esperando inicialización de cámara...")
+        print("[INFO] Inicializando cámara (2s)...")
         time.sleep(2)
         
-        # Descartar primeros frames (pueden estar en negro)
-        print("[DEBUG] Descartando primeros frames...")
+        # Descartar primeros 5 frames (pueden estar en negro o mal expuestos)
+        print("[DEBUG] Descartando frames de calentamiento...")
         for i in range(5):
-            ret, _ = cap.read()
-            if not ret:
-                print(f"[WARNING] Frame de calentamiento {i+1} falló")
+            cap.read()
         
         intentos = 0
         max_intentos = 30  # 30 frames = ~10 segundos
         
-        print("[INFO] Buscando rostro...")
+        print("[INFO] Buscando rostro en el frame...")
         
         while intentos < max_intentos:
             ret, frame = cap.read()
             
             if not ret or frame is None or frame.size == 0:
-                print(f"[WARNING] Intento {intentos+1}: Frame inválido")
+                print(f"[WARNING] Intento {intentos+1}/{max_intentos}: Frame inválido")
                 intentos += 1
                 time.sleep(0.3)
                 continue
+            
+            print(f"[DEBUG] Frame {intentos+1}: {frame.shape} - Analizando...")
             
             # Convertir BGR (OpenCV) a RGB (face_recognition)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -333,7 +333,8 @@ def capturar_rostro():
             face_locations = face_recognition.face_locations(rgb_frame)
             
             if len(face_locations) > 0:
-                print(f"[OK] Rostro detectado (intento {intentos+1})")
+                print(f"[OK] ✓ Rostro detectado en intento {intentos+1}")
+                print(f"[DEBUG] Ubicaciones: {face_locations}")
                 
                 # Extraer encoding del primer rostro
                 face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
@@ -341,16 +342,26 @@ def capturar_rostro():
                 if len(face_encodings) > 0:
                     embedding = face_encodings[0]
                     cap.release()
-                    print("[OK] Embedding facial extraido correctamente")
+                    print(f"[OK] ✓ Embedding facial extraído correctamente - Shape: {embedding.shape}")
                     return embedding
                 else:
                     print("[WARNING] Rostro detectado pero no se pudo extraer encoding")
+            else:
+                print(f"[DEBUG] No se detectó rostro en frame {intentos+1}")
             
             intentos += 1
             time.sleep(0.3)
         
         cap.release()
-        print("[ERROR] No se detecto ningun rostro después de 30 intentos")
+        print(f"[ERROR] ✗ No se detectó ningún rostro después de {max_intentos} intentos (~10s)")
+        return None
+        
+    except Exception as e:
+        print(f"[ERROR] ✗ Error capturando rostro: {e}")
+        import traceback
+        traceback.print_exc()
+        if cap:
+            cap.release()
         return None
         
     except Exception as e:
@@ -533,52 +544,6 @@ def admin_crear_pasajero():
             'error': str(e)
         }), 500
 
-@app.route('/api/admin/registrar-rfid', methods=['POST'])
-def admin_registrar_rfid():
-    """Registrar RFID de un pasajero"""
-    try:
-        data = request.json
-        id_pasajero = data.get('id_pasajero')
-        
-        if not id_pasajero:
-            return jsonify({
-                'status': 'error',
-                'error': 'ID de pasajero requerido'
-            }), 400
-        
-        print(f"\n=== REGISTRAR RFID - Pasajero ID: {id_pasajero} ===")
-        
-        # Leer RFID
-        rfid_uid = leer_rfid(timeout=15)
-        
-        if not rfid_uid:
-            print("[ERROR] No se detecto tarjeta RFID")
-            return jsonify({
-                'status': 'error',
-                'error': 'No se detecto tarjeta RFID'
-            }), 400
-        
-        # Registrar RFID
-        if registrar_rfid_pasajero(id_pasajero, rfid_uid):
-            print(f"[OK] RFID registrado: {rfid_uid}")
-            return jsonify({
-                'status': 'ok',
-                'rfid_uid': rfid_uid
-            })
-        else:
-            print("[ERROR] Error al registrar RFID (posible duplicado)")
-            return jsonify({
-                'status': 'error',
-                'error': 'Error al registrar RFID (posible RFID duplicado)'
-            }), 400
-            
-    except Exception as e:
-        print(f"[ERROR] Error: {e}")
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
-
 @app.route('/api/admin/registrar-rostro', methods=['POST'])
 def admin_registrar_rostro():
     """Capturar y registrar rostro de un pasajero"""
@@ -587,44 +552,54 @@ def admin_registrar_rostro():
         id_pasajero = data.get('id_pasajero')
         
         if not id_pasajero:
+            print("[ERROR] ID de pasajero no recibido")
             return jsonify({
                 'status': 'error',
                 'error': 'ID de pasajero requerido'
             }), 400
         
-        print(f"\n=== REGISTRAR ROSTRO - Pasajero ID: {id_pasajero} ===")
+        print(f"\n{'='*60}")
+        print(f"=== REGISTRAR ROSTRO - Pasajero ID: {id_pasajero} ===")
+        print(f"{'='*60}")
         
         # Capturar rostro
+        print("[INFO] Llamando a capturar_rostro()...")
         embedding = capturar_rostro()
         
         if embedding is None:
-            print("[ERROR] No se pudo capturar el rostro")
+            print("[ERROR] capturar_rostro() retornó None")
             return jsonify({
                 'status': 'error',
                 'error': 'No se pudo capturar el rostro'
             }), 400
         
+        print(f"[OK] Embedding recibido - Shape: {embedding.shape}")
+        
         # Guardar en BD
+        print("[INFO] Guardando embedding en base de datos...")
         if registrar_rostro_pasajero(id_pasajero, embedding):
-            print("[OK] Rostro registrado correctamente")
+            print("[OK] ✓ Rostro registrado correctamente en DB")
+            print(f"{'='*60}\n")
             return jsonify({
                 'status': 'ok',
                 'mensaje': 'Rostro registrado correctamente'
             })
         else:
-            print("[ERROR] Error al guardar el rostro")
+            print("[ERROR] Error al guardar el rostro en DB")
             return jsonify({
                 'status': 'error',
                 'error': 'Error al guardar el rostro'
             }), 500
             
     except Exception as e:
-        print(f"[ERROR] Error: {e}")
+        print(f"[ERROR] Excepción en admin_registrar_rostro: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'status': 'error',
             'error': str(e)
         }), 500
-
+        
 # ========================================
 # ENDPOINTS - USUARIO (ACCESO) - MODULO 1
 # ========================================
