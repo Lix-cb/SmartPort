@@ -1,7 +1,10 @@
 """
-app.py - API REST para SmartPort v2.0 - MODULO 1
+app.py - API REST para SmartPort v2.0
 Sistema de registro y acceso con RFID + Reconocimiento facial
-MODULO 1: Solo registro y validacion (NO abre puertas fisicas)
+
+MODULO 1: Registro y validacion biometrica (NO abre puertas fisicas)
+MODULO 2: Recepcion de datos de peso via MQTT (preparado para futuro)
+MODULO 3: Control de puerta fisica via MQTT (preparado para futuro)
 """
 
 from flask import Flask, request, jsonify
@@ -38,7 +41,9 @@ CORS(app)
 
 MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt.cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
-MQTT_TOPIC_PUERTA = "aeropuerto/puerta/abrir"
+MQTT_TOPIC_VERIFICAR_RFID = "aeropuerto/verificar_rfid"  # ESP32 Puerta envia RFID
+MQTT_TOPIC_PUERTA_RESPUESTA = "aeropuerto/puerta/respuesta"  # Raspberry responde
+MQTT_TOPIC_PESO = "aeropuerto/peso"  # ESP32 Bascula envia peso
 
 mqtt_client = mqtt.Client(client_id="RaspberryPi_Aeropuerto")
 mqtt_conectado = False
@@ -48,6 +53,12 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         mqtt_conectado = True
         print("[OK] Conectado al broker MQTT")
+        
+        # Suscribirse a topics necesarios
+        client.subscribe(MQTT_TOPIC_VERIFICAR_RFID)
+        client.subscribe(MQTT_TOPIC_PESO)
+        print(f"[OK] Suscrito a: {MQTT_TOPIC_VERIFICAR_RFID}")
+        print(f"[OK] Suscrito a: {MQTT_TOPIC_PESO}")
     else:
         mqtt_conectado = False
         print(f"[ERROR] Error conectando a MQTT: codigo {rc}")
@@ -57,12 +68,127 @@ def on_disconnect(client, userdata, rc):
     mqtt_conectado = False
     print("[INFO] Desconectado del broker MQTT")
 
+def on_message(client, userdata, msg):
+    """
+    Callback para mensajes MQTT recibidos
+    Modulo 2: Recibe pesos de bascula
+    Modulo 3: Recibe solicitudes de verificacion de RFID desde ESP32 Puerta
+    """
+    topic = msg.topic
+    payload = msg.payload.decode('utf-8')
+    
+    if topic == MQTT_TOPIC_VERIFICAR_RFID:
+        # MODULO 3: ESP32 Puerta solicita verificar RFID
+        print(f"\n[INFO] MODULO 3: ESP32 Puerta solicita verificar RFID: {payload}")
+        verificar_rfid_para_puerta(payload)
+    
+    elif topic == MQTT_TOPIC_PESO:
+        # MODULO 2: ESP32 Bascula envia peso
+        print(f"\n[INFO] MODULO 2: Peso recibido: {payload} kg")
+        registrar_peso_equipaje(float(payload))
+
+def verificar_rfid_para_puerta(rfid_uid):
+    """
+    MODULO 3: Verificar si un RFID puede abrir la puerta fisica
+    Valida que:
+    1. Tenga registro en accesos_puerta (paso check-in en Modulo 1)
+    2. Estado = ABORDADO
+    3. NO haya abierto la puerta antes (puerta_abierta = FALSE)
+    """
+    from db import get_db_connection
+    
+    conn = get_db_connection()
+    if not conn:
+        print("[ERROR] No se pudo conectar a la base de datos")
+        mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+        return
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # Buscar pasajero por RFID
+        cursor.execute("""
+            SELECT p.id_pasajero, p.nombre_normalizado, p. estado,
+                   a.id_acceso, a.puerta_abierta
+            FROM pasajeros p
+            LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
+            WHERE p.rfid_uid = %s
+        """, (rfid_uid,))
+        
+        resultado = cursor.fetchone()
+        
+        if not resultado:
+            print(f"[ERROR] RFID {rfid_uid} no encontrado en sistema")
+            mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+            return
+        
+        # Verificar que tenga check-in completado
+        if not resultado['id_acceso']:
+            print(f"[ERROR] RFID {rfid_uid} sin check-in completado (sin registro en accesos_puerta)")
+            mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+            return
+        
+        # Verificar que NO haya usado la puerta antes
+        if resultado['puerta_abierta']:
+            print(f"[ERROR] RFID {rfid_uid} ya fue usado anteriormente para abrir puerta")
+            mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+            return
+        
+        # TODO OK: Autorizar apertura
+        print(f"[OK] Acceso autorizado para: {resultado['nombre_normalizado']}")
+        print(f"[OK] Enviando señal ABRIR a ESP32 Puerta")
+        mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "ABRIR")
+        
+        # Marcar como usado en BD
+        cursor.execute("""
+            UPDATE accesos_puerta 
+            SET puerta_abierta = TRUE 
+            WHERE id_acceso = %s
+        """, (resultado['id_acceso'],))
+        
+        conn.commit()
+        print(f"[OK] Puerta marcada como usada en BD para pasajero ID: {resultado['id_pasajero']}")
+        
+    except Exception as e:
+        print(f"[ERROR] Error verificando RFID para puerta: {e}")
+        mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+    finally:
+        cursor.close()
+        conn.close()
+
+def registrar_peso_equipaje(peso_kg):
+    """
+    MODULO 2: Registrar peso recibido de ESP32 Bascula
+    """
+    from db import get_db_connection
+    
+    conn = get_db_connection()
+    if not conn:
+        print("[ERROR] No se pudo conectar a la base de datos")
+        return
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO pesos_equipaje (peso_kg)
+            VALUES (%s)
+        """, (peso_kg,))
+        
+        conn.commit()
+        print(f"[OK] Peso {peso_kg} kg registrado en BD")
+    except Exception as e:
+        print(f"[ERROR] Error registrando peso: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
 mqtt_client.on_connect = on_connect
 mqtt_client.on_disconnect = on_disconnect
+mqtt_client.on_message = on_message
 
 # ========================================
-# MODULO 1: MQTT deshabilitado (no requerido)
-# Se habilitara en Modulo 2 (recibir pesos) y Modulo 3 (abrir puerta)
+# MODULO 1: MQTT deshabilitado temporalmente
+# Descomentar en Modulo 2/3 cuando se requiera comunicacion MQTT
 # ========================================
 try:
     print("[INFO] MQTT deshabilitado en Modulo 1 (no requerido para registro)")
@@ -147,7 +273,7 @@ def capturar_rostro():
                     return embedding
             
             intentos += 1
-            time.sleep(0.3)
+            time. sleep(0.3)
         
         cap.release()
         print("[ERROR] No se detecto ningun rostro")
@@ -156,25 +282,6 @@ def capturar_rostro():
     except Exception as e:
         print(f"[ERROR] Error capturando rostro: {e}")
         return None
-
-def enviar_mqtt_abrir_puerta():
-    """
-    Enviar señal MQTT para abrir la puerta
-    NOTA: Esta funcion se usara en MODULO 3, no en Modulo 1
-    """
-    global mqtt_conectado
-    
-    if mqtt_conectado:
-        try:
-            mqtt_client.publish(MQTT_TOPIC_PUERTA, "ABRIR")
-            print("[OK] Señal MQTT enviada: ABRIR PUERTA")
-            return True
-        except Exception as e:
-            print(f"[ERROR] Error enviando MQTT: {e}")
-            return False
-    else:
-        print("[WARNING] MQTT no conectado - puerta no abierta")
-        return False
 
 # ========================================
 # ENDPOINTS - SISTEMA
@@ -523,9 +630,8 @@ def usuario_verificar_acceso():
             
             # ========================================
             # MODULO 1: NO ENVIAR SEÑAL MQTT
-            # Esta funcion se habilitara en Modulo 3
+            # Esta funcionalidad se activara en Modulo 3
             # ========================================
-            # enviar_mqtt_abrir_puerta()  # <-- COMENTADO para Modulo 1
             
             print("="*60)
             print(f"BIENVENIDO: {pasajero['nombre_normalizado']}")
@@ -546,7 +652,7 @@ def usuario_verificar_acceso():
         else:
             print("="*60)
             print("[ERROR] ACCESO DENEGADO")
-            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:.2f}% (minimo: 60%)")
+            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:. 2f}% (minimo: 60%)")
             print("="*60 + "\n")
             
             return jsonify({
@@ -584,4 +690,4 @@ if __name__ == '__main__':
     print("[INFO] Solo se registran validaciones en la base de datos")
     print("="*60 + "\n")
     
-    app.run(host='0.0.0. 0', port=5000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
