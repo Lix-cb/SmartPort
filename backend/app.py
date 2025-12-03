@@ -88,7 +88,7 @@ def leer_rfid(timeout=10):
                     return rfid_str
             except:
                 pass
-            time.sleep(0. 1)
+            time.sleep(0.1)
         
         print("⏱️  Timeout leyendo RFID")
         return None
