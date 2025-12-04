@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = import.meta. env.VITE_API_URL || "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export default function AdminRFID() {
   const navigate = useNavigate();
@@ -14,7 +14,7 @@ export default function AdminRFID() {
     const id = localStorage.getItem("id_pasajero");
     const nombre = localStorage.getItem("nombre_pasajero");
 
-    if (!id) {
+    if (! id) {
       alert("No hay pasajero seleccionado");
       navigate("/admin-panel");
       return;
@@ -29,6 +29,8 @@ export default function AdminRFID() {
     setError("");
 
     try {
+      console.log("[INFO] Leyendo RFID (sin guardar en BD)...");
+      
       const response = await fetch(`${API_URL}/api/admin/registrar-rfid`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -38,16 +40,23 @@ export default function AdminRFID() {
       });
 
       const data = await response.json();
+      console.log("[DEBUG] Respuesta del servidor:", data);
 
       if (response.ok && data.status === "ok") {
-        localStorage.setItem("rfid_uid", data.rfid_uid);
+        // Guardar RFID TEMPORALMENTE en localStorage
+        localStorage. setItem("temp_rfid", data.rfid_uid);
+        console.log("[OK] RFID guardado temporalmente:", data.rfid_uid);
+        console.log("[INFO] Se registrará en BD junto con el rostro");
+        
+        // Continuar a captura de rostro
         navigate("/admin-camara");
       } else {
-        setError(data.error || "Error al registrar RFID");
+        console.error("[ERROR] Backend respondió con error:", data. error);
+        setError(data.error || "Error al leer RFID");
       }
     } catch (err) {
+      console.error("[ERROR] Error de red:", err);
       setError("Error de conexión con el servidor");
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -57,7 +66,7 @@ export default function AdminRFID() {
     return (
       <div className="container">
         <img src="/GAP_logo.jpg" alt="Logo GAP" className="logo" />
-        <h2 className="title" style={{ color: "#667eea" }}>Escaneando RFID...</h2>
+        <h2 className="title" style={{ color: "#667eea" }}>Leyendo RFID...</h2>
         
         <div style={{
           backgroundColor: "#e7f3ff",
@@ -85,7 +94,7 @@ export default function AdminRFID() {
             📱 Acerque la tarjeta RFID al lector
           </p>
           <p style={{ fontSize: "14px", color: "#999", marginTop: "10px" }}>
-            Esperando lectura... 
+            Esperando lectura...
           </p>
         </div>
 
@@ -127,7 +136,7 @@ export default function AdminRFID() {
         marginBottom: "30px", 
         color: "#666",
         fontSize: "15px",
-        lineHeight: "1.6"
+        lineHeight: "1. 6"
       }}>
         Acerque la tarjeta RFID del pasajero al lector para continuar
       </p>
@@ -159,7 +168,7 @@ export default function AdminRFID() {
           marginBottom: "12px"
         }}
       >
-        📱 Escanear RFID
+        📱 Leer RFID
       </button>
       
       <button 
