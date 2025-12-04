@@ -195,7 +195,7 @@ def verificar_rfid_para_puerta(rfid_uid):
         cursor.execute("""
             UPDATE accesos_puerta 
             SET puerta_abierta = TRUE,
-                fecha_acceso = NOW()
+                fecha_hora = NOW()
             WHERE id_acceso = %s
         """, (resultado['id_acceso'],))
         
