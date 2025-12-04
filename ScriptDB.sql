@@ -45,7 +45,7 @@ CREATE TABLE pasajeros (
     rfid_uid VARCHAR(100) UNIQUE DEFAULT NULL,
     rostro_embedding BLOB DEFAULT NULL,
     
-    estado ENUM('REGISTRADO','VALIDADO','ABORDADO') DEFAULT 'REGISTRADO',
+    estado ENUM('REGISTRADO','VALIDADO','ABORDADO', 'COMPLETO') DEFAULT 'REGISTRADO',
     fecha_registro DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_pasajero_vuelo
@@ -111,6 +111,7 @@ SELECT 'Base de datos v2. 0 optimizada creada exitosamente' AS status;
 SELECT COUNT(*) AS total_admins FROM admins;
 SELECT COUNT(*) AS total_vuelos FROM vuelos;
 SELECT COUNT(*) AS total_pasajeros FROM pasajeros;
+
 
 
 
