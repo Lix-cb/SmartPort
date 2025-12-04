@@ -1,12 +1,16 @@
 """
-app.py - API REST para SmartPort v2. 0
+app.py - API REST para SmartPort v2.0
 Sistema de registro y acceso con RFID + Reconocimiento facial
 
-MODULO 1: Registro y validacion biometrica (NO abre puertas fisicas)
-MODULO 2: Recepcion de datos de peso via MQTT (preparado para futuro)
-MODULO 3: Control de puerta fisica via MQTT (preparado para futuro)
+MODULO 1: Registro y validacion biometrica con Raspberry Pi
+MODULO 2: Recepcion de datos de peso via MQTT desde ESP8266
+MODULO 3: Control de puerta fisica via MQTT con ESP8266
 
-VERSIÓN CON REGISTRO ATÓMICO: RFID + Rostro se guardan juntos
+VERSIÓN FINAL:
+- Registro atómico (RFID + Rostro juntos)
+- Integración completa con ESP8266 (Módulo 2 y 3)
+- Check-in automático al completar registro
+- Verificación de acceso con apertura de puerta
 """
 
 from flask import Flask, request, jsonify
@@ -47,11 +51,11 @@ CORS(app)
 # CONFIGURACION MQTT
 # ========================================
 
-MQTT_BROKER = os. environ.get("MQTT_BROKER", "broker.mqtt.cool")
+MQTT_BROKER = os. environ.get("MQTT_BROKER", "broker.mqtt. cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
-MQTT_TOPIC_VERIFICAR_RFID = "aeropuerto/verificar_rfid"  # ESP32 Puerta envia RFID
-MQTT_TOPIC_PUERTA_RESPUESTA = "aeropuerto/puerta/respuesta"  # Raspberry responde
-MQTT_TOPIC_PESO = "aeropuerto/peso"  # ESP32 Bascula envia peso
+MQTT_TOPIC_VERIFICAR_RFID = "aeropuerto/verificar_rfid"  # ESP8266 Puerta envia RFID
+MQTT_TOPIC_PUERTA_RESPUESTA = "aeropuerto/puerta/respuesta"  # Raspberry responde ABRIR/DENEGAR
+MQTT_TOPIC_PESO = "aeropuerto/peso"  # ESP8266 Bascula envia peso
 
 # ========================================
 # FIX para Python 3.13: Usar CallbackAPIVersion
@@ -60,11 +64,11 @@ try:
     # Python 3.13+ requiere especificar la version del API
     mqtt_client = mqtt.Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION1,
-        client_id="RaspberryPi_Aeropuerto"
+        client_id="RaspberryPi_SmartPort"
     )
 except AttributeError:
     # Fallback para versiones antiguas de paho-mqtt
-    mqtt_client = mqtt.Client(client_id="RaspberryPi_Aeropuerto")
+    mqtt_client = mqtt.Client(client_id="RaspberryPi_SmartPort")
 
 mqtt_conectado = False
 
@@ -92,27 +96,31 @@ def on_message(client, userdata, msg):
     """
     Callback para mensajes MQTT recibidos
     Modulo 2: Recibe pesos de bascula
-    Modulo 3: Recibe solicitudes de verificacion de RFID desde ESP32 Puerta
+    Modulo 3: Recibe solicitudes de verificacion de RFID desde ESP8266 Puerta
     """
     topic = msg.topic
     payload = msg.payload.decode('utf-8')
     
     if topic == MQTT_TOPIC_VERIFICAR_RFID:
-        # MODULO 3: ESP32 Puerta solicita verificar RFID
-        print(f"\n[INFO] MODULO 3: ESP32 Puerta solicita verificar RFID: {payload}")
+        # MODULO 3: ESP8266 Puerta solicita verificar RFID
+        print(f"\n[INFO] MODULO 3: ESP8266 Puerta solicita verificar RFID: {payload}")
         verificar_rfid_para_puerta(payload)
     
     elif topic == MQTT_TOPIC_PESO:
-        # MODULO 2: ESP32 Bascula envia peso
-        print(f"\n[INFO] MODULO 2: Peso recibido: {payload} kg")
-        registrar_peso_equipaje(float(payload))
+        # MODULO 2: ESP8266 Bascula envia peso
+        try:
+            peso = float(payload)
+            print(f"\n[INFO] MODULO 2: Peso recibido: {peso:. 2f} kg")
+            registrar_peso_equipaje(peso)
+        except ValueError:
+            print(f"[ERROR] MODULO 2: Peso inválido recibido: {payload}")
 
 def verificar_rfid_para_puerta(rfid_uid):
     """
     MODULO 3: Verificar si un RFID puede abrir la puerta fisica
     Valida que:
     1.  Tenga registro en accesos_puerta (paso check-in en Modulo 1)
-    2.  Estado = ABORDADO
+    2. Estado = VALIDADO
     3. NO haya abierto la puerta antes (puerta_abierta = FALSE)
     """
     conn = get_db_connection()
@@ -129,7 +137,7 @@ def verificar_rfid_para_puerta(rfid_uid):
             SELECT p.id_pasajero, p.nombre_normalizado, p.estado,
                    a.id_acceso, a.puerta_abierta
             FROM pasajeros p
-            LEFT JOIN accesos_puerta a ON p. id_pasajero = a. id_pasajero
+            LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
             WHERE p.rfid_uid = %s
         """, (rfid_uid,))
         
@@ -142,8 +150,14 @@ def verificar_rfid_para_puerta(rfid_uid):
         
         # Verificar que tenga check-in completado
         if not resultado['id_acceso']:
-            print(f"[ERROR] RFID {rfid_uid} sin check-in completado (sin registro en accesos_puerta)")
+            print(f"[ERROR] RFID {rfid_uid} sin check-in completado")
             mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+            return
+        
+        # Verificar que tenga estado VALIDADO
+        if resultado['estado'] != 'VALIDADO':
+            print(f"[ERROR] RFID {rfid_uid} sin validación biométrica completa")
+            mqtt_client. publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
             return
         
         # Verificar que NO haya usado la puerta antes
@@ -154,13 +168,14 @@ def verificar_rfid_para_puerta(rfid_uid):
         
         # TODO OK: Autorizar apertura
         print(f"[OK] Acceso autorizado para: {resultado['nombre_normalizado']}")
-        print(f"[OK] Enviando señal ABRIR a ESP32 Puerta")
+        print(f"[OK] Enviando señal ABRIR a ESP8266 Puerta")
         mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "ABRIR")
         
         # Marcar como usado en BD
         cursor.execute("""
             UPDATE accesos_puerta 
-            SET puerta_abierta = TRUE 
+            SET puerta_abierta = TRUE,
+                fecha_acceso = NOW()
             WHERE id_acceso = %s
         """, (resultado['id_acceso'],))
         
@@ -176,7 +191,7 @@ def verificar_rfid_para_puerta(rfid_uid):
 
 def registrar_peso_equipaje(peso_kg):
     """
-    MODULO 2: Registrar peso recibido de ESP32 Bascula
+    MODULO 2: Registrar peso recibido de ESP8266 Bascula
     """
     conn = get_db_connection()
     if not conn:
@@ -186,12 +201,17 @@ def registrar_peso_equipaje(peso_kg):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO pesos_equipaje (peso_kg)
-            VALUES (%s)
+            INSERT INTO pesos_equipaje (peso_kg, fecha_registro)
+            VALUES (%s, NOW())
         """, (peso_kg,))
         
         conn.commit()
-        print(f"[OK] Peso {peso_kg} kg registrado en BD")
+        print(f"[OK] Peso {peso_kg:. 2f} kg registrado en BD")
+        
+        # Mostrar advertencia si hay sobrepeso
+        if peso_kg > 23. 0:
+            print(f"[WARNING] SOBREPESO detectado: {peso_kg:.2f} kg (límite: 23 kg)")
+        
     except Exception as e:
         print(f"[ERROR] Error registrando peso: {e}")
     finally:
@@ -203,7 +223,7 @@ mqtt_client.on_disconnect = on_disconnect
 mqtt_client.on_message = on_message
 
 # ========================================
-# MODULO 1: MQTT con manejo de errores mejorado
+# INICIAR MQTT CON MANEJO DE ERRORES
 # ========================================
 try:
     print(f"[INFO] Conectando a MQTT: {MQTT_BROKER}:{MQTT_PORT}")
@@ -285,7 +305,7 @@ def capturar_rostro():
     try:
         print("[INFO] Iniciando captura de rostro...")
         
-        # Usar explícitamente /dev/video0 con backend V4L2 (Logitech HD Pro Webcam)
+        # Usar explícitamente /dev/video0 con backend V4L2
         print("[DEBUG] Abriendo /dev/video0 con V4L2...")
         cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
         
@@ -349,7 +369,7 @@ def capturar_rostro():
                 print(f"[DEBUG] No se detectó rostro en frame {intentos+1}")
             
             intentos += 1
-            time. sleep(0.3)
+            time.sleep(0.3)
         
         cap.release()
         print(f"[ERROR] ✗ No se detectó ningún rostro después de {max_intentos} intentos (~10s)")
@@ -372,8 +392,8 @@ def health_check():
     """Verificar estado del sistema"""
     return jsonify({
         'status': 'ok',
-        'modulo': 1,
-        'mqtt': 'conectado' if mqtt_conectado else 'desconectado (no requerido en Modulo 1)',
+        'modulo': 'SmartPort v2.0',
+        'mqtt': 'conectado' if mqtt_conectado else 'desconectado',
         'rfid': 'disponible' if RFID_DISPONIBLE else 'simulado',
         'broker': MQTT_BROKER
     })
@@ -427,7 +447,7 @@ def admin_login():
             'error': str(e)
         }), 500
 
-@app.route('/api/admin/registrar-admin', methods=['POST'])
+@app. route('/api/admin/registrar-admin', methods=['POST'])
 def registrar_nuevo_admin():
     """Registrar un nuevo administrador"""
     try:
@@ -587,7 +607,7 @@ def admin_registrar_rfid():
 def admin_completar_registro():
     """
     Completar registro: Guardar RFID + rostro juntos en la BD
-    Esto asegura que solo se guarden pasajeros con datos completos
+    También crea el registro de check-in en accesos_puerta (necesario para Módulo 3)
     REGISTRO ATÓMICO: Todo o nada
     """
     try:
@@ -607,7 +627,7 @@ def admin_completar_registro():
         print(f"{'='*60}")
         
         # PASO 1: Registrar RFID en BD
-        print("[INFO] Paso 1/2: Registrando RFID en BD...")
+        print("[INFO] Paso 1/3: Registrando RFID en BD...")
         if not registrar_rfid_pasajero(id_pasajero, rfid_uid):
             print("[ERROR] Error al registrar RFID")
             return jsonify({
@@ -618,7 +638,7 @@ def admin_completar_registro():
         print("[OK] ✓ RFID registrado correctamente en BD")
         
         # PASO 2: Capturar y registrar rostro
-        print("[INFO] Paso 2/2: Capturando rostro...")
+        print("[INFO] Paso 2/3: Capturando rostro...")
         embedding = capturar_rostro()
         
         if embedding is None:
@@ -627,7 +647,7 @@ def admin_completar_registro():
             conn = get_db_connection()
             if conn:
                 try:
-                    cursor = conn. cursor()
+                    cursor = conn.cursor()
                     cursor.execute("""
                         UPDATE pasajeros 
                         SET rfid_uid = NULL 
@@ -648,8 +668,8 @@ def admin_completar_registro():
         
         print(f"[OK] ✓ Rostro capturado - Shape: {embedding.shape}")
         
-        # PASO 3: Guardar rostro en BD
-        print("[INFO] Guardando rostro en BD...")
+        # PASO 3: Guardar rostro en BD Y crear check-in
+        print("[INFO] Paso 3/3: Guardando rostro y creando check-in...")
         if not registrar_rostro_pasajero(id_pasajero, embedding):
             print("[ERROR] Error al guardar rostro")
             # Intentar revertir RFID también
@@ -675,12 +695,14 @@ def admin_completar_registro():
             }), 500
         
         print("[OK] ✓ Rostro registrado correctamente en BD")
+        print("[OK] ✓ Check-in creado en accesos_puerta (Módulo 3 habilitado)")
         print(f"{'='*60}")
         print("[OK] ✓✓✓ REGISTRO COMPLETO EXITOSO ✓✓✓")
         print(f"[OK] Pasajero ID {id_pasajero} registrado con:")
         print(f"[OK]   - RFID: {rfid_uid}")
         print(f"[OK]   - Rostro: Embedding de {embedding.shape[0]} dimensiones")
         print(f"[OK]   - Estado: VALIDADO")
+        print(f"[OK]   - Check-in: Completado (puede usar Módulo 3)")
         print(f"{'='*60}\n")
         
         return jsonify({
@@ -706,7 +728,7 @@ def admin_completar_registro():
 def usuario_verificar_acceso():
     """
     Verificar acceso con RFID + rostro
-    MODULO 1: Solo registra validacion en BD (NO abre puerta fisica)
+    MODULO 1: Registra validacion en BD y actualiza estado para Módulo 3
     """
     try:
         # PASO 1: Leer RFID
@@ -769,20 +791,16 @@ def usuario_verificar_acceso():
         print(f"[OK] PASO 4: Similitud facial: {porcentaje_similitud:.2f}%")
         
         # PASO 5: Decidir si permitir acceso (umbral 60%)
-        if porcentaje_similitud >= 60.0:
+        if porcentaje_similitud >= 60. 0:
             print("="*60)
             print("[OK] ACCESO CONCEDIDO")
             print("="*60)
             
-            # Registrar acceso en BD (activa bandera para Modulo 3)
+            # Registrar acceso en BD
             print("[INFO] PASO 5: Registrando acceso en base de datos...")
             registrar_acceso(pasajero['id_pasajero'], porcentaje_similitud)
             print("[OK] PASO 5: Acceso registrado en BD")
-            
-            # ========================================
-            # MODULO 1: NO ENVIAR SEÑAL MQTT
-            # Esta funcionalidad se activara en Modulo 3
-            # ========================================
+            print("[INFO] Pasajero ahora puede usar Módulo 3 (puerta física)")
             
             print("="*60)
             print(f"BIENVENIDO: {pasajero['nombre_normalizado']}")
@@ -829,17 +847,31 @@ def usuario_verificar_acceso():
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("SMARTPORT v2.0 - MODULO 1")
-    print("SISTEMA DE REGISTRO Y VALIDACION BIOMETRICA")
+    print("SMARTPORT v2.0 - SISTEMA COMPLETO")
+    print("Sistema Inteligente de Control Aeroportuario")
     print("="*60)
-    print("Modulo: 1 (Registro RFID + Rostro)")
-    print("MQTT: Deshabilitado (no requerido en Modulo 1)")
-    print(f"RFID: {'Conectado' if RFID_DISPONIBLE else 'Modo simulacion'}")
+    print("MÓDULOS OPERATIVOS:")
+    print("  • Módulo 1: Registro biométrico (Raspberry Pi)")
+    if mqtt_conectado:
+        print("  • Módulo 2: Báscula inteligente (ESP8266)")
+        print("  • Módulo 3: Control de puerta (ESP8266)")
+    else:
+        print("  • Módulo 2: No disponible (MQTT desconectado)")
+        print("  • Módulo 3: No disponible (MQTT desconectado)")
+    print("="*60)
+    print(f"RFID Local: {'Conectado' if RFID_DISPONIBLE else 'Modo simulación'}")
+    print(f"MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}")
+    print(f"Estado MQTT: {'Conectado ✓' if mqtt_conectado else 'Desconectado ✗'}")
+    print("="*60)
+    print("CARACTERÍSTICAS:")
+    print("  ✓ Registro atómico (RFID + Rostro juntos)")
+    print("  ✓ Check-in automático al completar registro")
+    print("  ✓ Integración completa con ESP8266")
+    print("  ✓ Verificación biométrica facial")
+    print("  ✓ Control de acceso con apertura de puerta")
+    print("  ✓ Registro de pesos de equipaje")
+    print("="*60)
     print("Flask Server: http://0.0.0.0:5000")
-    print("="*60)
-    print("[INFO] REGISTRO ATÓMICO activado")
-    print("[INFO] RFID y Rostro se guardan juntos al final")
-    print("[INFO] Garantiza consistencia de datos")
     print("="*60 + "\n")
     
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
