@@ -1,10 +1,12 @@
 """
-app.py - API REST para SmartPort v2.0
+app.py - API REST para SmartPort v2. 0
 Sistema de registro y acceso con RFID + Reconocimiento facial
 
 MODULO 1: Registro y validacion biometrica (NO abre puertas fisicas)
 MODULO 2: Recepcion de datos de peso via MQTT (preparado para futuro)
 MODULO 3: Control de puerta fisica via MQTT (preparado para futuro)
+
+VERSIÓN CON REGISTRO ATÓMICO: RFID + Rostro se guardan juntos
 """
 
 from flask import Flask, request, jsonify
@@ -21,7 +23,8 @@ import threading
 from db import (
     verificar_admin, registrar_admin, listar_admins,
     crear_pasajero, registrar_rfid_pasajero, registrar_rostro_pasajero,
-    buscar_pasajero_por_rfid, registrar_acceso, calcular_similitud_facial
+    buscar_pasajero_por_rfid, registrar_acceso, calcular_similitud_facial,
+    get_db_connection
 )
 
 # Intentar importar MFRC522 (puede fallar si no esta conectado)
@@ -44,7 +47,7 @@ CORS(app)
 # CONFIGURACION MQTT
 # ========================================
 
-MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt.cool")
+MQTT_BROKER = os. environ.get("MQTT_BROKER", "broker.mqtt.cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC_VERIFICAR_RFID = "aeropuerto/verificar_rfid"  # ESP32 Puerta envia RFID
 MQTT_TOPIC_PUERTA_RESPUESTA = "aeropuerto/puerta/respuesta"  # Raspberry responde
@@ -55,13 +58,13 @@ MQTT_TOPIC_PESO = "aeropuerto/peso"  # ESP32 Bascula envia peso
 # ========================================
 try:
     # Python 3.13+ requiere especificar la version del API
-    mqtt_client = mqtt. Client(
+    mqtt_client = mqtt.Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION1,
         client_id="RaspberryPi_Aeropuerto"
     )
 except AttributeError:
     # Fallback para versiones antiguas de paho-mqtt
-    mqtt_client = mqtt. Client(client_id="RaspberryPi_Aeropuerto")
+    mqtt_client = mqtt.Client(client_id="RaspberryPi_Aeropuerto")
 
 mqtt_conectado = False
 
@@ -109,11 +112,9 @@ def verificar_rfid_para_puerta(rfid_uid):
     MODULO 3: Verificar si un RFID puede abrir la puerta fisica
     Valida que:
     1.  Tenga registro en accesos_puerta (paso check-in en Modulo 1)
-    2. Estado = ABORDADO
+    2.  Estado = ABORDADO
     3. NO haya abierto la puerta antes (puerta_abierta = FALSE)
     """
-    from db import get_db_connection
-    
     conn = get_db_connection()
     if not conn:
         print("[ERROR] No se pudo conectar a la base de datos")
@@ -121,11 +122,11 @@ def verificar_rfid_para_puerta(rfid_uid):
         return
     
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         # Buscar pasajero por RFID
         cursor.execute("""
-            SELECT p.id_pasajero, p.nombre_normalizado, p. estado,
+            SELECT p.id_pasajero, p.nombre_normalizado, p.estado,
                    a.id_acceso, a.puerta_abierta
             FROM pasajeros p
             LEFT JOIN accesos_puerta a ON p. id_pasajero = a. id_pasajero
@@ -148,7 +149,7 @@ def verificar_rfid_para_puerta(rfid_uid):
         # Verificar que NO haya usado la puerta antes
         if resultado['puerta_abierta']:
             print(f"[ERROR] RFID {rfid_uid} ya fue usado anteriormente para abrir puerta")
-            mqtt_client. publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+            mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
             return
         
         # TODO OK: Autorizar apertura
@@ -177,8 +178,6 @@ def registrar_peso_equipaje(peso_kg):
     """
     MODULO 2: Registrar peso recibido de ESP32 Bascula
     """
-    from db import get_db_connection
-    
     conn = get_db_connection()
     if not conn:
         print("[ERROR] No se pudo conectar a la base de datos")
@@ -350,7 +349,7 @@ def capturar_rostro():
                 print(f"[DEBUG] No se detectó rostro en frame {intentos+1}")
             
             intentos += 1
-            time.sleep(0.3)
+            time. sleep(0.3)
         
         cap.release()
         print(f"[ERROR] ✗ No se detectó ningún rostro después de {max_intentos} intentos (~10s)")
@@ -358,14 +357,6 @@ def capturar_rostro():
         
     except Exception as e:
         print(f"[ERROR] ✗ Error capturando rostro: {e}")
-        import traceback
-        traceback.print_exc()
-        if cap:
-            cap.release()
-        return None
-        
-    except Exception as e:
-        print(f"[ERROR] Error capturando rostro: {e}")
         import traceback
         traceback.print_exc()
         if cap:
@@ -546,7 +537,11 @@ def admin_crear_pasajero():
 
 @app.route('/api/admin/registrar-rfid', methods=['POST'])
 def admin_registrar_rfid():
-    """Registrar RFID de un pasajero"""
+    """
+    Leer RFID del pasajero (NO guardar en BD todavía)
+    Solo retornar el UID leído para guardarlo temporalmente en frontend
+    REGISTRO ATÓMICO: Se guardará junto con el rostro en completar-registro
+    """
     try:
         data = request.json
         id_pasajero = data.get('id_pasajero')
@@ -557,7 +552,8 @@ def admin_registrar_rfid():
                 'error': 'ID de pasajero requerido'
             }), 400
         
-        print(f"\n=== REGISTRAR RFID - Pasajero ID: {id_pasajero} ===")
+        print(f"\n=== LEER RFID (TEMPORAL) - Pasajero ID: {id_pasajero} ===")
+        print("[INFO] SOLO lectura, NO se guardará en BD todavía")
         
         # Leer RFID
         rfid_uid = leer_rfid(timeout=15)
@@ -569,19 +565,16 @@ def admin_registrar_rfid():
                 'error': 'No se detecto tarjeta RFID'
             }), 400
         
-        # Registrar RFID
-        if registrar_rfid_pasajero(id_pasajero, rfid_uid):
-            print(f"[OK] RFID registrado: {rfid_uid}")
-            return jsonify({
-                'status': 'ok',
-                'rfid_uid': rfid_uid
-            })
-        else:
-            print("[ERROR] Error al registrar RFID (posible duplicado)")
-            return jsonify({
-                'status': 'error',
-                'error': 'Error al registrar RFID (posible RFID duplicado)'
-            }), 400
+        print(f"[OK] RFID leído: {rfid_uid}")
+        print("[INFO] RFID guardado temporalmente en frontend")
+        print("[INFO] Se registrará en BD junto con el rostro en el siguiente paso")
+        
+        # NO GUARDAR EN BD, solo retornar
+        return jsonify({
+            'status': 'ok',
+            'rfid_uid': rfid_uid,
+            'mensaje': 'RFID leído correctamente (pendiente de registro completo)'
+        })
             
     except Exception as e:
         print(f"[ERROR] Error: {e}")
@@ -590,62 +583,121 @@ def admin_registrar_rfid():
             'error': str(e)
         }), 500
 
-@app.route('/api/admin/registrar-rostro', methods=['POST'])
-def admin_registrar_rostro():
-    """Capturar y registrar rostro de un pasajero"""
+@app.route('/api/admin/completar-registro', methods=['POST'])
+def admin_completar_registro():
+    """
+    Completar registro: Guardar RFID + rostro juntos en la BD
+    Esto asegura que solo se guarden pasajeros con datos completos
+    REGISTRO ATÓMICO: Todo o nada
+    """
     try:
         data = request.json
         id_pasajero = data.get('id_pasajero')
+        rfid_uid = data.get('rfid_uid')
         
-        if not id_pasajero:
-            print("[ERROR] ID de pasajero no recibido")
+        if not id_pasajero or not rfid_uid:
             return jsonify({
                 'status': 'error',
-                'error': 'ID de pasajero requerido'
+                'error': 'ID de pasajero y RFID son requeridos'
             }), 400
         
         print(f"\n{'='*60}")
-        print(f"=== REGISTRAR ROSTRO - Pasajero ID: {id_pasajero} ===")
+        print(f"=== COMPLETAR REGISTRO ATÓMICO - Pasajero ID: {id_pasajero} ===")
+        print(f"RFID: {rfid_uid}")
         print(f"{'='*60}")
         
-        # Capturar rostro
-        print("[INFO] Llamando a capturar_rostro()...")
+        # PASO 1: Registrar RFID en BD
+        print("[INFO] Paso 1/2: Registrando RFID en BD...")
+        if not registrar_rfid_pasajero(id_pasajero, rfid_uid):
+            print("[ERROR] Error al registrar RFID")
+            return jsonify({
+                'status': 'error',
+                'error': 'Error al registrar RFID (posible RFID duplicado)'
+            }), 400
+        
+        print("[OK] ✓ RFID registrado correctamente en BD")
+        
+        # PASO 2: Capturar y registrar rostro
+        print("[INFO] Paso 2/2: Capturando rostro...")
         embedding = capturar_rostro()
         
         if embedding is None:
-            print("[ERROR] capturar_rostro() retornó None")
+            # Si falla el rostro, REVERTIR el RFID (eliminar de BD)
+            print("[ERROR] No se pudo capturar rostro - REVIRTIENDO registro de RFID")
+            conn = get_db_connection()
+            if conn:
+                try:
+                    cursor = conn. cursor()
+                    cursor.execute("""
+                        UPDATE pasajeros 
+                        SET rfid_uid = NULL 
+                        WHERE id_pasajero = %s
+                    """, (id_pasajero,))
+                    conn.commit()
+                    cursor.close()
+                    conn. close()
+                    print("[INFO] ✓ RFID eliminado de BD por fallo en captura de rostro")
+                    print("[INFO] Transacción revertida - BD mantiene consistencia")
+                except Exception as e:
+                    print(f"[ERROR] Error al revertir RFID: {e}")
+            
             return jsonify({
                 'status': 'error',
-                'error': 'No se pudo capturar el rostro'
+                'error': 'No se pudo capturar el rostro.  Intente nuevamente.'
             }), 400
         
-        print(f"[OK] Embedding recibido - Shape: {embedding.shape}")
+        print(f"[OK] ✓ Rostro capturado - Shape: {embedding.shape}")
         
-        # Guardar en BD
-        print("[INFO] Guardando embedding en base de datos...")
-        if registrar_rostro_pasajero(id_pasajero, embedding):
-            print("[OK] ✓ Rostro registrado correctamente en DB")
-            print(f"{'='*60}\n")
-            return jsonify({
-                'status': 'ok',
-                'mensaje': 'Rostro registrado correctamente'
-            })
-        else:
-            print("[ERROR] Error al guardar el rostro en DB")
+        # PASO 3: Guardar rostro en BD
+        print("[INFO] Guardando rostro en BD...")
+        if not registrar_rostro_pasajero(id_pasajero, embedding):
+            print("[ERROR] Error al guardar rostro")
+            # Intentar revertir RFID también
+            conn = get_db_connection()
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE pasajeros 
+                        SET rfid_uid = NULL 
+                        WHERE id_pasajero = %s
+                    """, (id_pasajero,))
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                    print("[INFO] RFID eliminado de BD por fallo al guardar rostro")
+                except:
+                    pass
+            
             return jsonify({
                 'status': 'error',
                 'error': 'Error al guardar el rostro'
             }), 500
-            
+        
+        print("[OK] ✓ Rostro registrado correctamente en BD")
+        print(f"{'='*60}")
+        print("[OK] ✓✓✓ REGISTRO COMPLETO EXITOSO ✓✓✓")
+        print(f"[OK] Pasajero ID {id_pasajero} registrado con:")
+        print(f"[OK]   - RFID: {rfid_uid}")
+        print(f"[OK]   - Rostro: Embedding de {embedding.shape[0]} dimensiones")
+        print(f"[OK]   - Estado: VALIDADO")
+        print(f"{'='*60}\n")
+        
+        return jsonify({
+            'status': 'ok',
+            'mensaje': 'Registro completado exitosamente',
+            'rfid': rfid_uid
+        })
+        
     except Exception as e:
-        print(f"[ERROR] Excepción en admin_registrar_rostro: {e}")
+        print(f"[ERROR] Excepción en completar_registro: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
             'status': 'error',
             'error': str(e)
         }), 500
-        
+
 # ========================================
 # ENDPOINTS - USUARIO (ACCESO) - MODULO 1
 # ========================================
@@ -785,8 +837,9 @@ if __name__ == '__main__':
     print(f"RFID: {'Conectado' if RFID_DISPONIBLE else 'Modo simulacion'}")
     print("Flask Server: http://0.0.0.0:5000")
     print("="*60)
-    print("[INFO] En Modulo 1 NO se abren puertas fisicas")
-    print("[INFO] Solo se registran validaciones en la base de datos")
+    print("[INFO] REGISTRO ATÓMICO activado")
+    print("[INFO] RFID y Rostro se guardan juntos al final")
+    print("[INFO] Garantiza consistencia de datos")
     print("="*60 + "\n")
     
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
