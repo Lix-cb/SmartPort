@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = import.meta. env.VITE_API_URL || "http://localhost:5000";
-
 export default function AdminPanel() {
   const navigate = useNavigate();
   const [adminNombre, setAdminNombre] = useState("");
@@ -32,7 +30,7 @@ export default function AdminPanel() {
 
   return (
     <div className="container">
-      <img src="/GAP_logo.jpg" alt="Logo" className="logo" />
+      <img src="/GAP_logo.jpg" alt="Logo GAP" className="logo" />
       <h2 className="title">Panel de Administrador</h2>
       <p style={{ marginBottom: "30px", fontSize: "16px", color: "#666" }}>
         Bienvenido, <strong>{adminNombre}</strong>
@@ -41,7 +39,10 @@ export default function AdminPanel() {
       <button 
         className="button" 
         onClick={handleRegistrarPasajero}
-        style={{ marginBottom: "15px" }}
+        style={{ 
+          marginBottom: "15px",
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        }}
       >
         👤 Registrar Pasajero
       </button>
@@ -49,7 +50,10 @@ export default function AdminPanel() {
       <button 
         className="button" 
         onClick={handleRegistrarAdmin}
-        style={{ marginBottom: "15px", backgroundColor: "#17a2b8" }}
+        style={{ 
+          marginBottom: "15px", 
+          backgroundColor: "#17a2b8" 
+        }}
       >
         🔑 Registrar Nuevo Admin
       </button>
