@@ -10,12 +10,27 @@ export default function AdminRegistro() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // CAMBIO 5: Limitar a 4 caracteres
+  const handleVueloChange = (e) => {
+    const value = e.target.value;
+    // Solo aceptar números y limitar a 4 caracteres
+    if (value === "" || (/^\d+$/.test(value) && value.length <= 4)) {
+      setVuelo(value);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
     if (!nombre. trim() || !vuelo.trim()) {
       setError("Complete todos los campos");
+      return;
+    }
+
+    // Validar que el vuelo tenga máximo 4 dígitos
+    if (vuelo.length > 4) {
+      setError("El número de vuelo debe tener máximo 4 dígitos");
       return;
     }
 
@@ -34,8 +49,8 @@ export default function AdminRegistro() {
       const data = await response.json();
 
       if (response.ok && data.status === "ok") {
-        localStorage.setItem("id_pasajero", data.pasajero.id_pasajero);
-        localStorage. setItem("nombre_pasajero", data.pasajero.nombre);
+        localStorage.setItem("id_pasajero", data.pasajero. id_pasajero);
+        localStorage.setItem("nombre_pasajero", data.pasajero. nombre);
         localStorage.setItem("numero_vuelo", data.pasajero.numero_vuelo);
         navigate("/admin-rfid");
       } else {
@@ -95,12 +110,13 @@ export default function AdminRegistro() {
           autoFocus
         />
         <input
-          type="number"
-          placeholder="Número de vuelo"
+          type="text"
+          placeholder="Número de vuelo (máx. 4 dígitos)"
           className="input"
           value={vuelo}
-          onChange={(e) => setVuelo(e.target.value)}
+          onChange={handleVueloChange}
           disabled={loading}
+          maxLength={4}
           style={{
             fontSize: "16px",
             padding: "14px",
