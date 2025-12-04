@@ -119,29 +119,30 @@ def on_message(client, userdata, msg):
 def verificar_rfid_para_puerta(rfid_uid):
     """
     MODULO 3: Verificar si un RFID puede abrir la puerta fisica
-    Valida que:
-    1.  Tenga registro en accesos_puerta (paso check-in en Modulo 1)
-    2. Estado = ABORDADO (ya pasó check-in facial)
-    3. NO haya abierto la puerta antes (puerta_abierta = FALSE)
     
     Si todo OK:
-    - Envía "ABRIR" al ESP8266
-    - Actualiza puerta_abierta = TRUE
-    - Cambia estado del pasajero a COMPLETO
+    1. Envía "ABRIR" al ESP8266
+    2. Actualiza accesos_puerta. puerta_abierta = 1
+    3. Actualiza pasajeros.estado = 'COMPLETO'
+    4.  Guarda con COMMIT
     """
     conn = get_db_connection()
     if not conn:
         print("[ERROR] No se pudo conectar a la base de datos")
-        mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+        mqtt_client. publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
         return
+    
+    cursor = None
     
     try:
         cursor = conn.cursor()
         
-        # Buscar pasajero por RFID (formato HEX 8 caracteres)
-        cursor. execute("""
-            SELECT p. id_pasajero, p. nombre_normalizado, p. estado,
-                   a.id_acceso, a. puerta_abierta
+        # ============================================
+        # PASO 1: BUSCAR PASAJERO POR RFID
+        # ============================================
+        cursor.execute("""
+            SELECT p.id_pasajero, p.nombre_normalizado, p.estado,
+                   a.id_acceso, a.puerta_abierta
             FROM pasajeros p
             LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
             WHERE p.rfid_uid = %s
@@ -151,78 +152,158 @@ def verificar_rfid_para_puerta(rfid_uid):
         
         if not resultado:
             print(f"[ERROR] RFID {rfid_uid} no encontrado en sistema")
-            mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
-            return
-        
-        print(f"[INFO] Pasajero encontrado: {resultado['nombre_normalizado']}")
-        print(f"[INFO] Estado actual: {resultado['estado']}")
-        
-        # Verificar que tenga check-in completado
-        if not resultado['id_acceso']:
-            print(f"[ERROR] RFID {rfid_uid} sin check-in facial completado")
-            print(f"[INFO] Debe pasar primero por Módulo 1 (verificación facial)")
             mqtt_client. publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
             return
         
-        # Verificar que tenga estado ABORDADO (ya pasó check-in facial)
-        if resultado['estado'] != 'ABORDADO':
-            print(f"[ERROR] RFID {rfid_uid} con estado inválido: {resultado['estado']}")
-            print(f"[INFO] Estado requerido: ABORDADO (debe completar check-in facial)")
+        id_pasajero = resultado['id_pasajero']
+        id_acceso = resultado['id_acceso']
+        nombre = resultado['nombre_normalizado']
+        estado_actual = resultado['estado']
+        puerta_usada = resultado['puerta_abierta']
+        
+        print(f"\n[INFO] Pasajero encontrado: {nombre}")
+        print(f"[INFO] ID Pasajero: {id_pasajero}")
+        print(f"[INFO] ID Acceso: {id_acceso}")
+        print(f"[INFO] Estado actual: {estado_actual}")
+        print(f"[INFO] Puerta usada: {puerta_usada}")
+        
+        # ============================================
+        # PASO 2: VALIDACIONES
+        # ============================================
+        
+        # Validación 1: Tiene check-in completado? 
+        if not id_acceso:
+            print(f"[ERROR] Sin check-in facial completado")
+            print(f"[INFO] Debe pasar primero por Módulo 1")
             mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
             return
         
-        print(f"[OK] ✓ Estado verificado: ABORDADO")
+        # Validación 2: Estado es ABORDADO?
+        if estado_actual != 'ABORDADO':
+            print(f"[ERROR] Estado inválido: {estado_actual} (se requiere ABORDADO)")
+            mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+            return
         
-        # Verificar que NO haya usado la puerta antes
-        if resultado['puerta_abierta']:
-            print(f"[ERROR] RFID {rfid_uid} ya fue usado anteriormente para abrir puerta")
+        # Validación 3: NO ha usado la puerta antes?
+        if puerta_usada:
+            print(f"[ERROR] Esta tarjeta ya fue usada para abrir la puerta")
             print(f"[INFO] Solo se permite un acceso por pasajero")
             mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
             return
         
-        # TODO OK: Autorizar apertura
-        print("="*60)
+        # ============================================
+        # PASO 3: AUTORIZAR ACCESO
+        # ============================================
+        print("\n" + "="*60)
         print(f"[OK] ✓✓✓ ACCESO AUTORIZADO ✓✓✓")
-        print(f"[OK] Pasajero: {resultado['nombre_normalizado']}")
+        print(f"[OK] Pasajero: {nombre}")
         print(f"[OK] RFID: {rfid_uid}")
-        print(f"[OK] Enviando señal ABRIR a ESP8266 Puerta")
         print("="*60)
         
+        # Enviar señal ABRIR al ESP8266
         mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "ABRIR")
+        print("[MQTT] ✓ Señal ABRIR enviada al ESP8266")
         
-        # ACTUALIZACIÓN 1: Marcar puerta como usada en accesos_puerta
-        print("[INFO] Actualizando BD: puerta_abierta = TRUE")
+        # ============================================
+        # PASO 4: ACTUALIZAR BASE DE DATOS
+        # ============================================
+        print("\n[INFO] === ACTUALIZANDO BASE DE DATOS ===")
+        
+        # UPDATE 1: Marcar puerta como usada
+        print(f"[INFO] 1/2: Actualizando accesos_puerta (id_acceso={id_acceso})...")
         cursor.execute("""
             UPDATE accesos_puerta 
-            SET puerta_abierta = TRUE,
+            SET puerta_abierta = 1,
                 fecha_hora = NOW()
             WHERE id_acceso = %s
-        """, (resultado['id_acceso'],))
+        """, (id_acceso,))
         
-        # ACTUALIZACIÓN 2: Cambiar estado del pasajero a COMPLETO
-        print("[INFO] Actualizando BD: estado pasajero = COMPLETO")
+        filas_1 = cursor.rowcount
+        print(f"[DEBUG] Filas afectadas: {filas_1}")
+        
+        if filas_1 > 0:
+            print(f"[OK] ✓ accesos_puerta actualizado (puerta_abierta = 1)")
+        else:
+            print(f"[WARNING] No se actualizó ninguna fila en accesos_puerta")
+        
+        # UPDATE 2: Cambiar estado del pasajero a COMPLETO
+        print(f"[INFO] 2/2: Actualizando pasajeros (id_pasajero={id_pasajero})...")
         cursor.execute("""
             UPDATE pasajeros 
             SET estado = 'COMPLETO'
             WHERE id_pasajero = %s
-        """, (resultado['id_pasajero'],))
+        """, (id_pasajero,))
         
-        # COMMIT: Guardar ambos cambios
+        filas_2 = cursor.rowcount
+        print(f"[DEBUG] Filas afectadas: {filas_2}")
+        
+        if filas_2 > 0:
+            print(f"[OK] ✓ Estado actualizado (ABORDADO → COMPLETO)")
+        else:
+            print(f"[WARNING] No se actualizó ninguna fila en pasajeros")
+        
+        # COMMIT: Guardar cambios permanentemente
+        print("\n[INFO] Ejecutando COMMIT para guardar cambios...")
         conn.commit()
+        print("[OK] ✓✓✓ COMMIT EXITOSO - Cambios guardados en BD")
         
-        print(f"[OK] ✓ Puerta marcada como usada en BD (puerta_abierta = TRUE)")
-        print(f"[OK] ✓ Estado del pasajero actualizado: ABORDADO → COMPLETO")
-        print(f"[INFO] Proceso completado - Pasajero {resultado['nombre_normalizado']} ha abordado")
+        # ============================================
+        # PASO 5: VERIFICAR QUE SE GUARDARON LOS CAMBIOS
+        # ============================================
+        print("\n[INFO] === VERIFICANDO CAMBIOS EN BD ===")
+        cursor.execute("""
+            SELECT p.estado, a.puerta_abierta, a.fecha_hora
+            FROM pasajeros p
+            LEFT JOIN accesos_puerta a ON p. id_pasajero = a. id_pasajero
+            WHERE p.id_pasajero = %s
+        """, (id_pasajero,))
+        
+        verificacion = cursor.fetchone()
+        
+        print(f"[VERIFICACIÓN] Estado del pasajero: {verificacion['estado']}")
+        print(f"[VERIFICACIÓN] puerta_abierta: {verificacion['puerta_abierta']}")
+        print(f"[VERIFICACIÓN] fecha_hora: {verificacion['fecha_hora']}")
+        
+        # Validar que TODO se guardó correctamente
+        if verificacion['estado'] == 'COMPLETO' and verificacion['puerta_abierta'] == 1:
+            print("\n[OK] ✓✓✓ VERIFICACIÓN EXITOSA ✓✓✓")
+            print("[OK] Base de datos actualizada correctamente")
+        else:
+            print("\n[WARNING] ⚠ VERIFICACIÓN FALLIDA ⚠")
+            print("[WARNING] Los cambios NO se guardaron correctamente")
+            print(f"[DEBUG] Esperado: estado='COMPLETO', puerta_abierta=1")
+            print(f"[DEBUG] Obtenido: estado='{verificacion['estado']}', puerta_abierta={verificacion['puerta_abierta']}")
+        
         print("="*60)
+        print(f"[RESUMEN] Pasajero {nombre} - Proceso COMPLETO")
+        print("="*60 + "\n")
         
     except Exception as e:
-        print(f"[ERROR] Error verificando RFID para puerta: {e}")
+        print("\n" + "="*60)
+        print("[ERROR] ✗✗✗ ERROR EN VERIFICACIÓN ✗✗✗")
+        print(f"[ERROR] {e}")
+        print("="*60)
+        
         import traceback
         traceback.print_exc()
-        mqtt_client. publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+        
+        # Hacer rollback para deshacer cambios parciales
+        try:
+            conn.rollback()
+            print("[INFO] Rollback ejecutado - Cambios revertidos")
+        except:
+            pass
+        
+        # Denegar acceso si hay error
+        mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+        
     finally:
-        cursor.close()
-        conn.close()
+        # Cerrar cursor y conexión
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+            print("[DEBUG] Conexión a BD cerrada\n")
 
 def registrar_peso_equipaje(peso_kg):
     """
