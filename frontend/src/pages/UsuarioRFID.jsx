@@ -32,7 +32,7 @@ export default function UsuarioRFID() {
       }
 
       // ===== VALIDACIÓN 2: Ya completó proceso =====
-      if (response. status === 403 && data.error === "Ya completó el proceso de abordaje") {
+      if (response. status === 403 && data. error === "Ya completó el proceso de abordaje") {
         setError(`Ya completó el proceso de abordaje (Estado: ${data.estado_actual})`);
         setLoading(false);
         return;
@@ -49,11 +49,10 @@ export default function UsuarioRFID() {
       if (response.ok && data.status === "ok") {
         console.log("[OK] RFID válido - Continuando a verificación facial");
         
-        // Guardar datos del pasajero en localStorage
-        localStorage. setItem("usuario_id_pasajero", data.pasajero. id_pasajero);
+        // ✅ Guardar datos del pasajero en localStorage (SIN destino)
+        localStorage. setItem("usuario_id_pasajero", data.pasajero.id_pasajero);
         localStorage.setItem("usuario_nombre", data.pasajero.nombre);
         localStorage.setItem("usuario_vuelo", data.pasajero.vuelo);
-        localStorage.setItem("usuario_destino", data.pasajero. destino);
         
         // Navegar a la página de cámara
         navigate("/usuario-camara");
@@ -176,10 +175,11 @@ export default function UsuarioRFID() {
         onClick={handleScan}
         disabled={loading}
         style={{
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          background: loading ? "#ccc" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
           fontSize: "18px",
           padding: "16px",
-          marginBottom: "15px"
+          marginBottom: "15px",
+          cursor: loading ? "not-allowed" : "pointer"
         }}
       >
         📱 Escanear RFID
