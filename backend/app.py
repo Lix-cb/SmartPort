@@ -149,7 +149,7 @@ def on_message(client, userdata, msg):
             import traceback
             traceback.print_exc()
             print(f"[INFO] Guardando peso 0.0 como registro de error...")
-            registrar_peso_equipaje(0. 0)
+            registrar_peso_equipaje(0.0)
 
 def verificar_rfid_para_puerta(rfid_uid):
     """
@@ -352,7 +352,7 @@ def registrar_peso_equipaje(peso_kg):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO pesos_equipaje (peso_kg, fecha_registro)
+            INSERT INTO pesos_equipaje (peso_kg, fecha_hora)
             VALUES (%s, NOW())
         """, (peso_kg,))
         
