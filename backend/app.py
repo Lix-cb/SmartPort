@@ -24,6 +24,7 @@ import face_recognition
 import numpy as np
 import time
 import threading
+import picke
 
 # Importar funciones de base de datos
 from db import (
@@ -1002,7 +1003,7 @@ def usuario_verificar_rostro():
             WHERE id_pasajero = %s
         """, (id_pasajero,))
         
-        pasajero = cursor.fetchone()
+        pasajero = cursor. fetchone()
         cursor.close()
         conn.close()
         
@@ -1014,6 +1015,18 @@ def usuario_verificar_rostro():
             }), 404
         
         print(f"[INFO] Pasajero: {pasajero['nombre_normalizado']}")
+        
+        # ✅ DESERIALIZAR EL EMBEDDING (FIX CRÍTICO)
+        if pasajero['rostro_embedding']:
+            import pickle
+            pasajero['rostro_embedding'] = pickle.loads(pasajero['rostro_embedding'])
+            print(f"[DEBUG] Embedding deserializado - Type: {type(pasajero['rostro_embedding'])}, Shape: {pasajero['rostro_embedding'].shape}")
+        else:
+            print("[ERROR] Pasajero sin rostro registrado")
+            return jsonify({
+                'status': 'error',
+                'error': 'Pasajero sin biometría registrada'
+            }), 400
         
         # Capturar rostro actual
         print("[INFO] Capturando rostro actual...")
@@ -1068,7 +1081,7 @@ def usuario_verificar_rostro():
         else:
             print("="*60)
             print("[ERROR] ACCESO DENEGADO")
-            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:.2f}% (mínimo: 60%)")
+            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:. 2f}% (mínimo: 60%)")
             print("="*60 + "\n")
             
             # NO cambiar estado
@@ -1084,11 +1097,14 @@ def usuario_verificar_rostro():
         print("[ERROR] ERROR EN VERIFICACIÓN")
         print(f"[ERROR] Error: {e}")
         print("="*60 + "\n")
+        
+        import traceback
+        traceback.print_exc()
+        
         return jsonify({
             'status': 'error',
             'error': str(e)
         }), 500
-
 # ========================================
 # ENDPOINTS - DASHBOARD
 # ========================================
