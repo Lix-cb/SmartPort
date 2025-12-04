@@ -22,6 +22,10 @@ export default function AdminPanel() {
     navigate("/admin-registrar-admin");
   };
 
+  const handleDashboard = () => {
+    navigate("/dashboard-pesos");
+  };
+
   const handleSalir = () => {
     localStorage.removeItem("admin_id");
     localStorage.removeItem("admin_nombre");
@@ -56,6 +60,17 @@ export default function AdminPanel() {
         }}
       >
         🔑 Registrar Nuevo Admin
+      </button>
+      
+      <button 
+        className="button" 
+        onClick={handleDashboard}
+        style={{ 
+          marginBottom: "15px", 
+          background: "linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%)"
+        }}
+      >
+        📊 Dashboard de Pesos
       </button>
       
       <button 
