@@ -486,14 +486,33 @@ def calcular_similitud_facial(embedding1, embedding2):
         emb2 = np.array(embedding2)
         
         # Calcular distancia euclidiana
-        distancia = np.linalg.norm(emb1 - emb2)
+        distancia = np. linalg.norm(emb1 - emb2)
         
-        # Convertir a porcentaje de similitud
-        # Distancia menor = mayor similitud
-        # 0. 6 es el umbral tipico de face_recognition
-        porcentaje = max(0, min(100, (1 - distancia) * 100))
+        # ✅ FÓRMULA CORREGIDA
+        # En face_recognition, distancias típicas:
+        #   0.0 - 0.4 = Excelente match (mismo usuario)
+        #   0.4 - 0.6 = Match aceptable (mismo usuario)
+        #   > 0.6 = No match (diferente usuario)
         
-        return porcentaje
+        # Convertir distancia a porcentaje de similitud
+        # usando umbral de 0.6 como referencia
+        umbral_max = 0.6
+        
+        if distancia <= umbral_max:
+            # Mapear distancia [0, 0.6] a similitud [100%, 0%]
+            porcentaje = ((umbral_max - distancia) / umbral_max) * 100
+        else:
+            # Si distancia > 0.6, similitud = 0%
+            porcentaje = 0. 0
+        
+        # Registrar en logs para debugging
+        print(f"[DEBUG] Distancia euclidiana: {distancia:.4f}")
+        print(f"[DEBUG] Similitud calculada: {porcentaje:.2f}%")
+        
+        return round(porcentaje, 2)
+        
     except Exception as e:
         print(f"[ERROR] Error calculando similitud: {e}")
-        return 0
+        import traceback
+        traceback.print_exc()
+        return 0. 0
