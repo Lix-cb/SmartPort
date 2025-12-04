@@ -6,6 +6,7 @@ import AdminRegistro from "./pages/AdminRegistro.jsx";
 import AdminRFID from "./pages/AdminRFID.jsx";
 import AdminCamara from "./pages/AdminCamara.jsx";
 import UsuarioAcceso from "./pages/UsuarioAcceso.jsx";
+import AdminRegistrarAdmin from "./pages/AdminRegistrarAdmin";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/admin-registro" element={<AdminRegistro />} />
         <Route path="/admin-rfid" element={<AdminRFID />} />
         <Route path="/admin-camara" element={<AdminCamara />} />
+        <Route path="/admin-registrar-admin" element={<AdminRegistrarAdmin />} />
         
         {/* Flujo Usuario */}
         <Route path="/usuario-acceso" element={<UsuarioAcceso />} />
