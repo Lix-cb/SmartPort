@@ -95,13 +95,6 @@ CREATE INDEX idx_fecha_hora ON pesos_equipaje (fecha_hora);
 -- -----------------------------------------------------
 -- DATOS DE PRUEBA
 -- -----------------------------------------------------
-INSERT INTO vuelos (numero_vuelo, destino)
-VALUES (1234, 'CDMX');
-
-INSERT INTO pasajeros (nombre_normalizado, numero_vuelo)
-VALUES
- ('JORGE CARDENAS BLANCO', 1234),
- ('FRANCISCO CALDERON OROZCO', 1234);
 
 -- -----------------------------------------------------
 -- USUARIO Y PERMISOS
@@ -118,5 +111,6 @@ SELECT 'Base de datos v2. 0 optimizada creada exitosamente' AS status;
 SELECT COUNT(*) AS total_admins FROM admins;
 SELECT COUNT(*) AS total_vuelos FROM vuelos;
 SELECT COUNT(*) AS total_pasajeros FROM pasajeros;
+
 
 
