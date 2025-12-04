@@ -1,6 +1,6 @@
 /*
  * SmartPort v2.0 - MÓDULO 3: Control de Puerta con RFID
- * ESP32 + MFRC522 (RFID) + Servomotor
+ * ESP8266 (NodeMCU) + MFRC522 (RFID) + Servomotor
  * 
  * Funcionalidad:
  * - Lee tarjetas RFID con lector RC522
@@ -9,27 +9,27 @@
  * - Si ABRIR → Activa servomotor por 3 segundos (abre puerta)
  * - Evita lecturas duplicadas con sistema de cooldown
  * 
- * Conexiones:
- * - RC522 RST  → GPIO 22
- * - RC522 SS   → GPIO 21
- * - RC522 MOSI → GPIO 23
- * - RC522 MISO → GPIO 19
- * - RC522 SCK  → GPIO 18
- * - Servo      → GPIO 13
+ * Conexiones ESP8266 (NodeMCU):
+ * - RC522 RST  → D3 (GPIO 0)
+ * - RC522 SS   → D4 (GPIO 2)
+ * - RC522 MOSI → D7 (GPIO 13) [SPI FIJO]
+ * - RC522 MISO → D6 (GPIO 12) [SPI FIJO]
+ * - RC522 SCK  → D5 (GPIO 14) [SPI FIJO]
+ * - Servo      → D2 (GPIO 4)
  */
 
 #include <Arduino.h>
 #include <SPI.h>
 #include <MFRC522.h>
-#include <WiFi.h>
+#include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
 // ========================================
-// CONFIGURACIÓN DE PINES
+// CONFIGURACIÓN DE PINES (ESP8266)
 // ========================================
-#define RST_PIN 22
-#define SS_PIN 21
-#define MOTOR_PIN 13
+#define RST_PIN D3      // GPIO 0
+#define SS_PIN D4       // GPIO 2
+#define SERVO_PIN D2    // GPIO 4
 
 // ========================================
 // CONFIGURACIÓN WiFi
@@ -42,7 +42,7 @@ const char* password = "Arribalamaquina";       // CAMBIAR por tu contraseña
 // ========================================
 const char* mqtt_server = "broker.mqtt.cool";
 const int mqtt_port = 1883;
-const char* mqtt_client_id = "ESP32_Puerta_Aeropuerto";
+const char* mqtt_client_id = "ESP8266_Puerta_Aeropuerto";
 const char* topic_verificar = "aeropuerto/verificar_rfid";      // Enviar RFID para verificar
 const char* topic_respuesta = "aeropuerto/puerta/respuesta";    // Recibir ABRIR/DENEGAR
 
@@ -102,18 +102,18 @@ void abrirPuerta() {
   Serial.println("[MOTOR] ⚙️  Activando servomotor...");
   
   // Activar motor (abrir puerta)
-  digitalWrite(MOTOR_PIN, HIGH);
+  digitalWrite(SERVO_PIN, HIGH);
   
   // Mantener abierto 3 segundos
   for (int i = 3; i > 0; i--) {
     Serial.print("[MOTOR] Cerrando en ");
-    Serial.print(i);
-    Serial.println(" segundos...");
+    Serial. print(i);
+    Serial. println(" segundos...");
     delay(1000);
   }
   
   // Desactivar motor (cerrar puerta)
-  digitalWrite(MOTOR_PIN, LOW);
+  digitalWrite(SERVO_PIN, LOW);
   
   Serial.println("[MOTOR] ✓ Puerta cerrada");
   Serial.println();
@@ -137,7 +137,7 @@ void setupWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println();
-    Serial. println("[WiFi] ✓ Conectado exitosamente");
+    Serial.println("[WiFi] ✓ Conectado exitosamente");
     Serial.print("[WiFi] IP asignada: ");
     Serial.println(WiFi.localIP());
     Serial.print("[WiFi] Señal: ");
@@ -153,7 +153,7 @@ void setupWiFi() {
 void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print("[MQTT] Conectando a ");
-    Serial. print(mqtt_server);
+    Serial.print(mqtt_server);
     Serial.print(":");
     Serial.print(mqtt_port);
     Serial.println("...");
@@ -174,7 +174,7 @@ void reconnectMQTT() {
       Serial.println("[MQTT] Códigos de error:");
       Serial. println("  -4 : Timeout de conexión");
       Serial.println("  -3 : Conexión perdida");
-      Serial.println("  -2 : Fallo de conexión");
+      Serial. println("  -2 : Fallo de conexión");
       Serial.println("  -1 : Desconectado");
       Serial.println("   0 : Conectado");
       Serial.println("[MQTT] Reintentando en 5 segundos...");
@@ -186,9 +186,9 @@ void reconnectMQTT() {
 String leerRFID() {
   String contenido = "";
   
-  for (byte i = 0; i < rfid.uid. size; i++) {
-    contenido += String(rfid.uid. uidByte[i] < 0x10 ? "0" : "");
-    contenido += String(rfid.uid.uidByte[i], HEX);
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    contenido += String(rfid. uid.uidByte[i] < 0x10 ? "0" : "");
+    contenido += String(rfid. uid.uidByte[i], HEX);
   }
   
   contenido.toUpperCase();
@@ -226,10 +226,10 @@ void procesarRFID(String rfidUID) {
 
   // Enviar RFID por MQTT para validación
   Serial.print("[MQTT] Enviando UID para validación: ");
-  Serial. println(rfidUID);
+  Serial.println(rfidUID);
 
-  if (client.publish(topic_verificar, rfidUID. c_str())) {
-    Serial.println("[MQTT] ✓ UID enviado correctamente");
+  if (client.publish(topic_verificar, rfidUID.c_str())) {
+    Serial. println("[MQTT] ✓ UID enviado correctamente");
     Serial.println("[INFO] Esperando respuesta del servidor...");
   } else {
     Serial.println("[MQTT] ✗ Error al enviar UID");
@@ -247,28 +247,38 @@ void setup() {
   Serial.println();
   Serial.println("========================================");
   Serial.println("  SmartPort v2.0 - MÓDULO 3");
-  Serial. println("  Control de Puerta con RFID");
+  Serial.println("  Control de Puerta con RFID");
+  Serial.println("  Hardware: ESP8266 (NodeMCU)");
   Serial.println("========================================");
   Serial.println();
 
-  // Configurar pin del motor
-  pinMode(MOTOR_PIN, OUTPUT);
-  digitalWrite(MOTOR_PIN, LOW);
-  Serial.println("[MOTOR] Pin configurado (GPIO 13)");
+  // Configurar pin del servomotor
+  pinMode(SERVO_PIN, OUTPUT);
+  digitalWrite(SERVO_PIN, LOW);
+  Serial.println("[MOTOR] Pin configurado: D2 (GPIO 4)");
 
   // Inicializar SPI y RFID
-  SPI.begin();
+  SPI. begin();
   rfid.PCD_Init();
   
   Serial.println("[RFID] Lector RC522 inicializado");
+  Serial.print("[RFID] Pines configurados:");
+  Serial.print(" RST=D3, SS=D4");
+  Serial.println();
   Serial.print("[RFID] Versión del firmware: 0x");
   Serial.println(rfid.PCD_ReadRegister(rfid. VersionReg), HEX);
   
   // Verificar si el lector está funcionando
-  if (rfid. PCD_ReadRegister(rfid.VersionReg) == 0x00 || 
-      rfid.PCD_ReadRegister(rfid. VersionReg) == 0xFF) {
+  byte version = rfid.PCD_ReadRegister(rfid.VersionReg);
+  if (version == 0x00 || version == 0xFF) {
     Serial.println("[RFID] ✗ ERROR: No se detecta el lector RC522");
-    Serial.println("[RFID] Verifique las conexiones SPI");
+    Serial.println("[RFID] Verifique las conexiones:");
+    Serial.println("  RST  → D3 (GPIO 0)");
+    Serial.println("  SS   → D4 (GPIO 2)");
+    Serial.println("  MOSI → D7 (GPIO 13)");
+    Serial.println("  MISO → D6 (GPIO 12)");
+    Serial.println("  SCK  → D5 (GPIO 14)");
+    Serial.println("  3.3V y GND correctos");
   } else {
     Serial.println("[RFID] ✓ Lector funcionando correctamente");
   }
