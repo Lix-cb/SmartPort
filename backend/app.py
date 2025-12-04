@@ -210,7 +210,7 @@ def registrar_peso_equipaje(peso_kg):
         print(f"[OK] Peso {peso_kg:. 2f} kg registrado en BD")
         
         # Mostrar advertencia si hay sobrepeso
-        if peso_kg > 23. 0:
+        if peso_kg > 2.0:
             print(f"[WARNING] SOBREPESO detectado: {peso_kg:.2f} kg (límite: 23 kg)")
         
     except Exception as e:
@@ -807,7 +807,7 @@ def usuario_verificar_acceso():
         print(f"[OK] PASO 4: Similitud facial: {porcentaje_similitud:.2f}%")
         
         # PASO 5: Decidir si permitir acceso (umbral 60%)
-        if porcentaje_similitud >= 60. 0:
+        if porcentaje_similitud >= 60.0:
             print("="*60)
             print("[OK] ACCESO CONCEDIDO")
             print("="*60)
