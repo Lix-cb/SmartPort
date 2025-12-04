@@ -1,29 +1,24 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = import.meta.env. VITE_API_URL || "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export default function UsuarioAcceso() {
   const navigate = useNavigate();
-  const [estado, setEstado] = useState("esperando"); // esperando | escaneandoRFID | capturandoRostro | exito | error
+  const [estado, setEstado] = useState("esperando"); // esperando | escaneandoRFID | capturandoRostro | exito | error | errorGeneral
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [pasajeroInfo, setPasajeroInfo] = useState(null);
   const [similitud, setSimilitud] = useState(null);
   const [paso, setPaso] = useState(1); // 1=RFID, 2=Rostro
+  const [rfidValido, setRfidValido] = useState(false); // NUEVO: Para controlar si RFID es válido
 
   const handleVerificar = async () => {
     setLoading(true);
     setEstado("escaneandoRFID");
     setPaso(1);
-    setMensaje("Acerque su tarjeta RFID.. .");
-
-    // Simular paso 1: Escaneo RFID (2 segundos)
-    setTimeout(() => {
-      setEstado("capturandoRostro");
-      setPaso(2);
-      setMensaje("Mire a la cámara...");
-    }, 2000);
+    setRfidValido(false); // Reset
+    setMensaje("Acerque su tarjeta RFID...");
 
     try {
       const response = await fetch(`${API_URL}/api/usuario/verificar-acceso`, {
@@ -32,6 +27,30 @@ export default function UsuarioAcceso() {
       });
 
       const data = await response.json();
+
+      // CAMBIO 1: Si RFID no es válido, NO mostrar "Mire a la cámara"
+      if (response.status === 404 && data.error === "RFID no registrado") {
+        setEstado("error");
+        setMensaje("Tarjeta RFID no registrada en el sistema");
+        setRfidValido(false); // NO pasar a captura de rostro
+        
+        setTimeout(() => {
+          setEstado("esperando");
+          setMensaje("");
+          setPaso(1);
+        }, 4000);
+        setLoading(false);
+        return;
+      }
+
+      // Si RFID es válido, mostrar paso 2
+      setRfidValido(true);
+      setEstado("capturandoRostro");
+      setPaso(2);
+      setMensaje("Mire a la cámara.. .");
+
+      // Esperar un poco para que se vea la transición
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       if (response.ok && data.status === "ok" && data.acceso === "concedido") {
         setEstado("exito");
@@ -45,26 +64,42 @@ export default function UsuarioAcceso() {
           setPasajeroInfo(null);
           setSimilitud(null);
           setPaso(1);
+          setRfidValido(false);
         }, 6000);
-      } else {
+      } else if (data.error === "Biometria no coincide") {
+        // CAMBIO 3: NO TOCAR - Mantener cruz roja
         setEstado("error");
-        setMensaje(data. error || "Acceso denegado");
+        setMensaje("Los datos biométricos no coinciden");
         
         setTimeout(() => {
           setEstado("esperando");
           setMensaje("");
           setPaso(1);
+          setRfidValido(false);
+        }, 4000);
+      } else {
+        // CAMBIO 2: Otros errores con guión amarillo
+        setEstado("errorGeneral");
+        setMensaje("Error en la verificación.  Por favor, intente nuevamente");
+        
+        setTimeout(() => {
+          setEstado("esperando");
+          setMensaje("");
+          setPaso(1);
+          setRfidValido(false);
         }, 4000);
       }
     } catch (err) {
-      setEstado("error");
-      setMensaje("Error de conexión con el servidor");
+      // CAMBIO 2: Error de conexión con guión amarillo
+      setEstado("errorGeneral");
+      setMensaje("Error de conexión.  Por favor, intente nuevamente");
       console.error(err);
       
       setTimeout(() => {
         setEstado("esperando");
         setMensaje("");
         setPaso(1);
+        setRfidValido(false);
       }, 4000);
     } finally {
       setLoading(false);
@@ -93,7 +128,7 @@ export default function UsuarioAcceso() {
             borderTop: "8px solid transparent",
             borderRadius: "50%",
             margin: "0 auto 30px",
-            animation: "spin 1. 2s linear infinite"
+            animation: "spin 1.2s linear infinite"
           }}></div>
           
           <div style={{ fontSize: "60px", marginBottom: "20px" }}>📱</div>
@@ -119,7 +154,7 @@ export default function UsuarioAcceso() {
   if (estado === "capturandoRostro") {
     return (
       <div className="container">
-        <img src="/GAP_logo.jpg" alt="Logo GAP" className="logo" />
+        <img src="/GAP_logo. jpg" alt="Logo GAP" className="logo" />
         <h2 className="title" style={{ color: "#007bff" }}>Paso 2/2: Reconocimiento Facial</h2>
         
         <div style={{
@@ -197,6 +232,7 @@ export default function UsuarioAcceso() {
             Bienvenido, <strong>{pasajeroInfo.nombre}</strong>
           </p>
           
+          {/* CAMBIO 4: NO mostrar destino */}
           <div style={{
             backgroundColor: "#fff",
             borderRadius: "12px",
@@ -211,15 +247,6 @@ export default function UsuarioAcceso() {
               </p>
               <p style={{ margin: 0, fontSize: "20px", fontWeight: "bold", color: "#333" }}>
                 ✈️ {pasajeroInfo.vuelo}
-              </p>
-            </div>
-            
-            <div style={{ marginBottom: "12px" }}>
-              <p style={{ margin: 0, fontSize: "14px", color: "#666", marginBottom: "4px" }}>
-                Destino:
-              </p>
-              <p style={{ margin: 0, fontSize: "20px", fontWeight: "bold", color: "#333" }}>
-                🌍 {pasajeroInfo. destino}
               </p>
             </div>
             
@@ -259,7 +286,44 @@ export default function UsuarioAcceso() {
     );
   }
 
-  // Estado: Error
+  // CAMBIO 2: Estado de error general (guión amarillo)
+  if (estado === "errorGeneral") {
+    return (
+      <div className="container">
+        <img src="/GAP_logo.jpg" alt="Logo GAP" className="logo" />
+        
+        <div style={{
+          backgroundColor: "#fff3cd",
+          border: "3px solid #ffc107",
+          borderRadius: "16px",
+          padding: "40px",
+          marginBottom: "25px",
+          textAlign: "center",
+          animation: "shake 0.5s"
+        }}>
+          <div style={{ fontSize: "80px", marginBottom: "20px", color: "#ffc107" }}>
+            ⚠
+          </div>
+          <h2 style={{ color: "#856404", marginBottom: "15px", fontSize: "26px", fontWeight: "700" }}>
+            Advertencia
+          </h2>
+          <p style={{ fontSize: "16px", color: "#856404", lineHeight: "1.6" }}>
+            {mensaje}
+          </p>
+        </div>
+
+        <style>{`
+          @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-15px); }
+            75% { transform: translateX(15px); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // CAMBIO 3: Estado de error biométrico (cruz roja - NO TOCAR)
   if (estado === "error") {
     return (
       <div className="container">
@@ -299,7 +363,7 @@ export default function UsuarioAcceso() {
   // Estado: Esperando (inicial)
   return (
     <div className="container">
-      <img src="/GAP_logo.jpg" alt="Logo GAP" className="logo" />
+      <img src="/GAP_logo. jpg" alt="Logo GAP" className="logo" />
       <h2 className="title">✈️ Control de Acceso</h2>
       
       <p style={{ 
