@@ -8,6 +8,8 @@ import AdminCamara from "./pages/AdminCamara.jsx";
 import UsuarioAcceso from "./pages/UsuarioAcceso.jsx";
 import AdminRegistrarAdmin from "./pages/AdminRegistrarAdmin";
 import DashboardPesos from "./pages/DashboardPesos";
+import UsuarioRFID from "./pages/UsuarioRFID. jsx";
+import UsuarioCamara from "./pages/UsuarioCamara.jsx";
 
 export default function App() {
   return (
@@ -24,6 +26,8 @@ export default function App() {
         <Route path="/admin-camara" element={<AdminCamara />} />
         <Route path="/admin-registrar-admin" element={<AdminRegistrarAdmin />} />
         <Route path="/dashboard-pesos" element={<DashboardPesos />} />
+        <Route path="/usuario-acceso" element={<UsuarioRFID />} />
+        <Route path="/usuario-camara" element={<UsuarioCamara />} />
         
         {/* Flujo Usuario */}
         <Route path="/usuario-acceso" element={<UsuarioAcceso />} />
