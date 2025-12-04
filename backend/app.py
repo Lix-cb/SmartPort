@@ -11,6 +11,7 @@ VERSIÓN FINAL:
 - Integración completa con ESP8266 (Módulo 2 y 3)
 - Check-in automático al completar registro
 - Verificación de acceso con apertura de puerta
+- FORMATO RFID: HEXADECIMAL (estándar universal)
 """
 
 from flask import Flask, request, jsonify
@@ -51,7 +52,7 @@ CORS(app)
 # CONFIGURACION MQTT
 # ========================================
 
-MQTT_BROKER = os. environ.get("MQTT_BROKER", "broker.mqtt. cool")
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt.cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC_VERIFICAR_RFID = "aeropuerto/verificar_rfid"  # ESP8266 Puerta envia RFID
 MQTT_TOPIC_PUERTA_RESPUESTA = "aeropuerto/puerta/respuesta"  # Raspberry responde ABRIR/DENEGAR
@@ -132,10 +133,10 @@ def verificar_rfid_para_puerta(rfid_uid):
     try:
         cursor = conn.cursor()
         
-        # Buscar pasajero por RFID
+        # Buscar pasajero por RFID (formato HEX)
         cursor.execute("""
             SELECT p.id_pasajero, p.nombre_normalizado, p.estado,
-                   a.id_acceso, a.puerta_abierta
+                   a.id_acceso, a. puerta_abierta
             FROM pasajeros p
             LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
             WHERE p.rfid_uid = %s
@@ -240,45 +241,55 @@ except Exception as e:
 # ========================================
 
 def leer_rfid(timeout=30):
+    """
+    Leer tarjeta RFID y retornar UID en formato HEXADECIMAL
+    Formato estándar compatible con ESP8266
+    """
     if not RFID_DISPONIBLE:
-        simulated_id = "SIM" + str(int(time.time() * 1000))[-8:]
+        # Modo simulación
+        simulated_id = "SIM" + format(int(time.time() * 1000) % 0xFFFFFFFF, 'X')
+        print(f"[SIMULACION] RFID generado: {simulated_id}")
         return simulated_id
     
-    if not rfid_lock.acquire(blocking=True, timeout=5):
-        print("[ERROR] No se pudo adquirir lock para leer RFID")
+    # ADQUIRIR LOCK - Solo un thread puede leer RFID a la vez
+    if not rfid_lock. acquire(blocking=True, timeout=5):
+        print("[ERROR] No se pudo adquirir lock para leer RFID (otro proceso leyendo)")
         return None
     
     try:
         print(f"[INFO] Esperando tarjeta RFID (timeout {timeout}s)...")
+        print("[DEBUG] Lock adquirido - iniciando lectura...")
         
+        # Variables compartidas entre threads
         resultado = {'rfid': None, 'error': None, 'completado': False}
         
         def leer_bloqueante():
+            """Thread interno que ejecuta reader.read() bloqueante"""
             try:
-                id, text = reader.read()  # id es el número grande de SimpleMFRC522
+                id, text = reader.read()  # BLOQUEANTE
                 
-                # SimpleMFRC522 devuelve un número muy grande
-                # Necesitamos extraer solo los últimos 4 bytes (32 bits)
+                # Convertir ID a HEXADECIMAL (formato estándar)
+                rfid_hex = format(id, 'X'). upper()
                 
-                # Método 1: Usar solo los últimos 32 bits del número
-                uid_decimal = id & 0xFFFFFFFF  # Máscara de 32 bits
-                
-                resultado['rfid'] = str(uid_decimal)
+                resultado['rfid'] = rfid_hex
                 resultado['completado'] = True
                 
-                print(f"[OK] RFID leído: {resultado['rfid']}")
-                print(f"[DEBUG] ID original SimpleMFRC522: {id}")
-                print(f"[DEBUG] UID convertido (32 bits): {uid_decimal}")
+                print(f"[OK] RFID leído: {rfid_hex}")
+                print(f"[DEBUG] ID decimal original: {id}")
                 
             except Exception as e:
                 resultado['error'] = str(e)
                 resultado['completado'] = True
                 print(f"[ERROR] Error leyendo RFID: {e}")
         
+        # Crear thread de lectura
         thread_lectura = threading.Thread(target=leer_bloqueante, daemon=True)
         thread_lectura.start()
+        
+        # Esperar con timeout
         thread_lectura.join(timeout=timeout)
         
+        # Verificar si terminó
         if not resultado['completado']:
             print(f"[TIMEOUT] No se detectó tarjeta en {timeout}s")
             return None
@@ -290,6 +301,7 @@ def leer_rfid(timeout=30):
         return resultado['rfid']
         
     finally:
+        # LIBERAR LOCK - Permitir que otro thread lea
         rfid_lock.release()
         print("[DEBUG] Lock liberado")
 
@@ -389,7 +401,8 @@ def health_check():
         'modulo': 'SmartPort v2.0',
         'mqtt': 'conectado' if mqtt_conectado else 'desconectado',
         'rfid': 'disponible' if RFID_DISPONIBLE else 'simulado',
-        'broker': MQTT_BROKER
+        'broker': MQTT_BROKER,
+        'formato_rfid': 'HEXADECIMAL'
     })
 
 # ========================================
@@ -856,6 +869,7 @@ if __name__ == '__main__':
     print(f"RFID Local: {'Conectado' if RFID_DISPONIBLE else 'Modo simulación'}")
     print(f"MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}")
     print(f"Estado MQTT: {'Conectado ✓' if mqtt_conectado else 'Desconectado ✗'}")
+    print(f"Formato RFID: HEXADECIMAL (estándar)")
     print("="*60)
     print("CARACTERÍSTICAS:")
     print("  ✓ Registro atómico (RFID + Rostro juntos)")
@@ -864,6 +878,7 @@ if __name__ == '__main__':
     print("  ✓ Verificación biométrica facial")
     print("  ✓ Control de acceso con apertura de puerta")
     print("  ✓ Registro de pesos de equipaje")
+    print("  ✓ Formato RFID universal (HEX)")
     print("="*60)
     print("Flask Server: http://0.0.0.0:5000")
     print("="*60 + "\n")
