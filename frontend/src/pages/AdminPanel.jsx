@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API_URL = import.meta. env.VITE_API_URL || "http://localhost:5000";
+
 export default function AdminPanel() {
   const navigate = useNavigate();
   const [adminNombre, setAdminNombre] = useState("");
@@ -19,31 +21,7 @@ export default function AdminPanel() {
   };
 
   const handleRegistrarAdmin = () => {
-    const nombre = prompt("Ingrese el nombre del nuevo administrador:");
-    if (! nombre) return;
-
-    registrarNuevoAdmin(nombre);
-  };
-
-  const registrarNuevoAdmin = async (nombre) => {
-    try {
-      const response = await fetch("http://localhost:5000/api/admin/registrar-admin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre })
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.status === "ok") {
-        alert(`✅ ${data.mensaje}\nRFID: ${data.rfid_uid}`);
-      } else {
-        alert(`❌ Error: ${data.error}`);
-      }
-    } catch (err) {
-      alert("❌ Error de conexión");
-      console.error(err);
-    }
+    navigate("/admin-registrar-admin");
   };
 
   const handleSalir = () => {
