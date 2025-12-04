@@ -503,7 +503,7 @@ def calcular_similitud_facial(embedding1, embedding2):
             porcentaje = ((umbral_max - distancia) / umbral_max) * 100
         else:
             # Si distancia > 0.6, similitud = 0%
-            porcentaje = 0. 0
+            porcentaje = 0.0
         
         # Registrar en logs para debugging
         print(f"[DEBUG] Distancia euclidiana: {distancia:.4f}")
