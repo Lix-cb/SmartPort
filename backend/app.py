@@ -96,11 +96,11 @@ def on_disconnect(client, userdata, rc):
 def on_message(client, userdata, msg):
     """
     Callback para mensajes MQTT recibidos
-    Modulo 2: Recibe pesos de bascula
+    Modulo 2: Recibe pesos de bascula (ya en kg)
     Modulo 3: Recibe solicitudes de verificacion de RFID desde ESP8266 Puerta
     """
     topic = msg.topic
-    payload = msg.payload.decode('utf-8')
+    payload = msg.payload. decode('utf-8'). strip()  # ✅ Eliminar espacios
     
     if topic == MQTT_TOPIC_VERIFICAR_RFID:
         # MODULO 3: ESP8266 Puerta solicita verificar RFID
@@ -108,13 +108,48 @@ def on_message(client, userdata, msg):
         verificar_rfid_para_puerta(payload)
     
     elif topic == MQTT_TOPIC_PESO:
-        # MODULO 2: ESP8266 Bascula envia peso
+        # MODULO 2: ESP8266 Bascula envia peso en kg (como string)
+        print(f"\n[DEBUG] MODULO 2: Payload recibido (raw): '{payload}' (tipo: {type(payload)})")
+        
         try:
-            peso = float(payload)
-            print(f"\n[INFO] MODULO 2: Peso recibido: {peso:. 2f} kg")
+            # ✅ FIX 1: Reemplazar coma por punto (por si acaso)
+            payload_limpio = payload.replace(',', '.')
+            
+            # ✅ FIX 2: Convertir a float
+            peso = float(payload_limpio)
+            
+            print(f"[INFO] MODULO 2: Peso convertido: {peso:.3f} kg")
+            
+            # ✅ FIX 3: Validar rango mínimo (0.100 kg en lugar de 0.5)
+            if peso < 0. 0:
+                print(f"[WARNING] Peso negativo: {peso:.3f} kg - Ajustando a 0.0")
+                peso = 0.0
+            elif peso < 0.100:
+                print(f"[WARNING] Peso muy bajo: {peso:.3f} kg (mínimo: 0.100 kg)")
+            elif peso > 50.0:
+                print(f"[WARNING] Peso muy alto: {peso:.2f} kg")
+            
+            # ✅ FIX 4: SIEMPRE guardar en BD, sin importar el valor
             registrar_peso_equipaje(peso)
-        except ValueError:
-            print(f"[ERROR] MODULO 2: Peso inválido recibido: {payload}")
+            print(f"[OK] Peso {peso:.3f} kg procesado correctamente")
+            
+        except ValueError as e:
+            # ✅ FIX 5: Si falla conversión, guardar 0.0 como marca de error
+            print(f"[ERROR] MODULO 2: No se pudo convertir a float: '{payload}'")
+            print(f"[ERROR] Tipo de dato: {type(payload)}, Longitud: {len(payload)}")
+            print(f"[ERROR] Bytes (hex): {payload.encode('utf-8'). hex()}")
+            print(f"[ERROR] Detalle: {e}")
+            print(f"[INFO] Guardando peso 0.0 como registro de error...")
+            registrar_peso_equipaje(0.0)
+        except Exception as e:
+            # ✅ FIX 6: Capturar cualquier otro error
+            print(f"[ERROR] MODULO 2: Error inesperado procesando peso")
+            print(f"[ERROR] Payload: '{payload}'")
+            print(f"[ERROR] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            print(f"[INFO] Guardando peso 0.0 como registro de error...")
+            registrar_peso_equipaje(0. 0)
 
 def verificar_rfid_para_puerta(rfid_uid):
     """
