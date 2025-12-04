@@ -226,15 +226,27 @@ mqtt_client.on_message = on_message
 # ========================================
 # INICIAR MQTT CON MANEJO DE ERRORES
 # ========================================
-try:
-    print(f"[INFO] Conectando a MQTT: {MQTT_BROKER}:{MQTT_PORT}")
-    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-    mqtt_client.loop_start()
-    print("[OK] MQTT habilitado para Modulos 2 y 3")
-except Exception as e:
-    print(f"[WARNING] MQTT no disponible: {e}")
-    print("[INFO] Solo Modulo 1 estara operativo")
-    mqtt_conectado = False
+# ========================================
+# INICIAR MQTT CON MANEJO DE ERRORES
+# ========================================
+def iniciar_mqtt_async():
+    """Iniciar MQTT en segundo plano sin bloquear Flask"""
+    global mqtt_conectado
+    print(f"[INFO] Conectando a MQTT en segundo plano: {MQTT_BROKER}:{MQTT_PORT}")
+    try:
+        mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        mqtt_client. loop_start()
+        mqtt_conectado = True
+        print("[OK] ✓ MQTT conectado correctamente")
+    except Exception as e:
+        mqtt_conectado = False
+        print(f"[WARNING] ✗ MQTT no disponible: {e}")
+        print("[INFO] Sistema funcionará solo con Módulo 1")
+
+# Iniciar MQTT en thread separado (no bloqueante)
+mqtt_thread = threading.Thread(target=iniciar_mqtt_async, daemon=True, name="MQTT-Thread")
+mqtt_thread.start()
+print("[INFO] MQTT iniciando en segundo plano...")
 
 # ========================================
 # FUNCIONES AUXILIARES
