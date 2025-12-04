@@ -240,50 +240,46 @@ except Exception as e:
 # ========================================
 
 def leer_rfid(timeout=30):
-    """
-    Leer tarjeta RFID con timeout y LOCK para evitar colisiones
-    
-    CRITICO: Usa un lock global para evitar que multiples threads
-    intenten acceder al lector RC522 simultaneamente (no es thread-safe)
-    """
     if not RFID_DISPONIBLE:
-        # Modo simulación
         simulated_id = "SIM" + str(int(time.time() * 1000))[-8:]
-        print(f"[SIMULACION] RFID generado: {simulated_id}")
         return simulated_id
     
-    # ADQUIRIR LOCK - Solo un thread puede leer RFID a la vez
     if not rfid_lock.acquire(blocking=True, timeout=5):
-        print("[ERROR] No se pudo adquirir lock para leer RFID (otro proceso leyendo)")
+        print("[ERROR] No se pudo adquirir lock para leer RFID")
         return None
     
     try:
         print(f"[INFO] Esperando tarjeta RFID (timeout {timeout}s)...")
-        print("[DEBUG] Lock adquirido - iniciando lectura...")
         
-        # Variables compartidas entre threads
         resultado = {'rfid': None, 'error': None, 'completado': False}
         
         def leer_bloqueante():
-            """Thread interno que ejecuta reader. read() bloqueante"""
             try:
-                id, text = reader.read()  # BLOQUEANTE
-                resultado['rfid'] = str(id). strip()
+                id, text = reader.read()
+                
+                # NUEVA LÓGICA: Leer el UID directamente (no el ID extendido)
+                # El UID está en reader. READER. uid
+                from mfrc522 import MFRC522
+                uid_bytes = reader.READER.uid
+                
+                # Convertir los primeros 4 bytes a decimal (igual que ESP8266)
+                uid_decimal = (uid_bytes[0] << 24) | (uid_bytes[1] << 16) | (uid_bytes[2] << 8) | uid_bytes[3]
+                
+                resultado['rfid'] = str(uid_decimal)
                 resultado['completado'] = True
+                
                 print(f"[OK] RFID leído: {resultado['rfid']}")
+                print(f"[DEBUG] Bytes UID: {' '.join([hex(b) for b in uid_bytes])}")
+                
             except Exception as e:
                 resultado['error'] = str(e)
                 resultado['completado'] = True
                 print(f"[ERROR] Error leyendo RFID: {e}")
         
-        # Crear thread de lectura
         thread_lectura = threading.Thread(target=leer_bloqueante, daemon=True)
         thread_lectura.start()
-        
-        # Esperar con timeout
         thread_lectura.join(timeout=timeout)
         
-        # Verificar si terminó
         if not resultado['completado']:
             print(f"[TIMEOUT] No se detectó tarjeta en {timeout}s")
             return None
@@ -295,7 +291,6 @@ def leer_rfid(timeout=30):
         return resultado['rfid']
         
     finally:
-        # LIBERAR LOCK - Permitir que otro thread lea
         rfid_lock.release()
         print("[DEBUG] Lock liberado")
 
