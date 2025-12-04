@@ -1,32 +1,72 @@
+/*
+ * SmartPort v2.0 - MÓDULO 3: Control de Puerta con RFID
+ * ESP32 + MFRC522 (RFID) + Servomotor
+ * 
+ * Funcionalidad:
+ * - Lee tarjetas RFID con lector RC522
+ * - Envía UID por MQTT a Raspberry Pi para validación
+ * - Espera respuesta "ABRIR" o "DENEGAR"
+ * - Si ABRIR → Activa servomotor por 3 segundos (abre puerta)
+ * - Evita lecturas duplicadas con sistema de cooldown
+ * 
+ * Conexiones:
+ * - RC522 RST  → GPIO 22
+ * - RC522 SS   → GPIO 21
+ * - RC522 MOSI → GPIO 23
+ * - RC522 MISO → GPIO 19
+ * - RC522 SCK  → GPIO 18
+ * - Servo      → GPIO 13
+ */
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <MFRC522.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
 
-// Pines RFID RC522 (ESP32)
+// ========================================
+// CONFIGURACIÓN DE PINES
+// ========================================
 #define RST_PIN 22
 #define SS_PIN 21
-
-// Pin Servomotor
 #define MOTOR_PIN 13
 
-// WiFi
-const char* ssid = "iPhone de Jorge";
-const char* password = "Arribalamaquina";
+// ========================================
+// CONFIGURACIÓN WiFi
+// ========================================
+const char* ssid = "iPhone de Jorge";           // CAMBIAR por tu red WiFi
+const char* password = "Arribalamaquina";       // CAMBIAR por tu contraseña
 
-// MQTT
+// ========================================
+// CONFIGURACIÓN MQTT
+// ========================================
 const char* mqtt_server = "broker.mqtt.cool";
-const char* topic_verificar = "aeropuerto/verificar_rfid";
-const char* topic_respuesta = "aeropuerto/puerta/respuesta";
+const int mqtt_port = 1883;
+const char* mqtt_client_id = "ESP32_Puerta_Aeropuerto";
+const char* topic_verificar = "aeropuerto/verificar_rfid";      // Enviar RFID para verificar
+const char* topic_respuesta = "aeropuerto/puerta/respuesta";    // Recibir ABRIR/DENEGAR
 
+// ========================================
+// OBJETOS
+// ========================================
 MFRC522 rfid(SS_PIN, RST_PIN);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+// ========================================
+// VARIABLES DE CONTROL
+// ========================================
 bool esperandoRespuesta = false;
 unsigned long tiempoUltimaLectura = 0;
-const unsigned long DELAY_LECTURAS = 3000;
+const unsigned long COOLDOWN_LECTURAS = 5000;    // 5 segundos entre lecturas
+const unsigned long TIMEOUT_RESPUESTA = 10000;   // 10 segundos timeout para respuesta MQTT
+unsigned long tiempoInicioEspera = 0;
+
+String ultimoRFIDLeido = "";
+
+// ========================================
+// FUNCIONES
+// ========================================
 
 void callback(char* topic, byte* payload, unsigned int length) {
   String mensaje = "";
@@ -34,32 +74,58 @@ void callback(char* topic, byte* payload, unsigned int length) {
     mensaje += (char)payload[i];
   }
 
-  Serial.print("[MQTT] Respuesta recibida: ");
+  Serial.print("[MQTT] Mensaje recibido en topic: ");
+  Serial.println(topic);
+  Serial.print("[MQTT] Contenido: ");
   Serial.println(mensaje);
 
   if (String(topic) == topic_respuesta) {
     if (mensaje == "ABRIR") {
-      Serial.println("[OK] ACCESO AUTORIZADO - Abriendo puerta");
+      Serial.println("========================================");
+      Serial.println("[✓] ACCESO AUTORIZADO");
+      Serial.println("[MOTOR] Abriendo puerta...");
+      Serial.println("========================================");
       abrirPuerta();
     } else if (mensaje == "DENEGAR") {
-      Serial.println("[ERROR] ACCESO DENEGADO");
+      Serial. println("========================================");
+      Serial.println("[✗] ACCESO DENEGADO");
+      Serial.println("========================================");
+    } else {
+      Serial.print("[MQTT] Mensaje desconocido: ");
+      Serial.println(mensaje);
     }
     esperandoRespuesta = false;
   }
 }
 
 void abrirPuerta() {
-  Serial.println("[MOTOR] Activando.. .");
+  Serial.println("[MOTOR] ⚙️  Activando servomotor...");
+  
+  // Activar motor (abrir puerta)
   digitalWrite(MOTOR_PIN, HIGH);
-  delay(3000);
+  
+  // Mantener abierto 3 segundos
+  for (int i = 3; i > 0; i--) {
+    Serial.print("[MOTOR] Cerrando en ");
+    Serial.print(i);
+    Serial.println(" segundos...");
+    delay(1000);
+  }
+  
+  // Desactivar motor (cerrar puerta)
   digitalWrite(MOTOR_PIN, LOW);
-  Serial.println("[MOTOR] Desactivado");
+  
+  Serial.println("[MOTOR] ✓ Puerta cerrada");
+  Serial.println();
 }
 
 void setupWiFi() {
-  Serial.print("[WiFi] Conectando a ");
+  delay(10);
+  Serial.println();
+  Serial.print("[WiFi] Conectando a: ");
   Serial.println(ssid);
-  
+
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
   int intentos = 0;
@@ -70,95 +136,194 @@ void setupWiFi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n[WiFi] Conectado");
-    Serial.print("[WiFi] IP: ");
+    Serial.println();
+    Serial. println("[WiFi] ✓ Conectado exitosamente");
+    Serial.print("[WiFi] IP asignada: ");
     Serial.println(WiFi.localIP());
+    Serial.print("[WiFi] Señal: ");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
   } else {
-    Serial.println("\n[WiFi] ERROR: No se pudo conectar");
+    Serial.println();
+    Serial.println("[WiFi] ✗ ERROR: No se pudo conectar");
+    Serial.println("[WiFi] Verifique SSID y contraseña");
   }
 }
 
 void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print("[MQTT] Conectando a ");
-    Serial.print(mqtt_server);
+    Serial. print(mqtt_server);
+    Serial.print(":");
+    Serial.print(mqtt_port);
     Serial.println("...");
     
-    if (client.connect("ESP32_Puerta_Aeropuerto")) {
-      Serial.println("[MQTT] Conectado");
+    if (client.connect(mqtt_client_id)) {
+      Serial.println("[MQTT] ✓ Conectado exitosamente");
+      
+      // Suscribirse al topic de respuestas
       client.subscribe(topic_respuesta);
-      Serial.print("[MQTT] Suscrito a: ");
+      Serial.print("[MQTT] ✓ Suscrito a: ");
       Serial.println(topic_respuesta);
+      
+      Serial.println("[MQTT] Listo para recibir comandos");
     } else {
-      Serial.print("[MQTT] Fallo, rc=");
+      Serial.print("[MQTT] ✗ Fallo, rc=");
       Serial.print(client.state());
-      Serial.println(" Reintentando en 5s...");
+      Serial.println();
+      Serial.println("[MQTT] Códigos de error:");
+      Serial. println("  -4 : Timeout de conexión");
+      Serial.println("  -3 : Conexión perdida");
+      Serial.println("  -2 : Fallo de conexión");
+      Serial.println("  -1 : Desconectado");
+      Serial.println("   0 : Conectado");
+      Serial.println("[MQTT] Reintentando en 5 segundos...");
       delay(5000);
     }
   }
 }
 
+String leerRFID() {
+  String contenido = "";
+  
+  for (byte i = 0; i < rfid.uid. size; i++) {
+    contenido += String(rfid.uid. uidByte[i] < 0x10 ? "0" : "");
+    contenido += String(rfid.uid.uidByte[i], HEX);
+  }
+  
+  contenido.toUpperCase();
+  return contenido;
+}
+
+void procesarRFID(String rfidUID) {
+  Serial.println("========================================");
+  Serial.println("[RFID] Tarjeta detectada");
+  Serial.print("[RFID] UID: ");
+  Serial.println(rfidUID);
+  Serial.println("========================================");
+
+  // Verificar cooldown
+  unsigned long tiempoActual = millis();
+  if (tiempoActual - tiempoUltimaLectura < COOLDOWN_LECTURAS) {
+    unsigned long tiempoRestante = (COOLDOWN_LECTURAS - (tiempoActual - tiempoUltimaLectura)) / 1000;
+    Serial.print("[INFO] Cooldown activo.  Espere ");
+    Serial.print(tiempoRestante);
+    Serial.println(" segundos");
+    return;
+  }
+
+  // Verificar si es la misma tarjeta
+  if (rfidUID == ultimoRFIDLeido && (tiempoActual - tiempoUltimaLectura < COOLDOWN_LECTURAS * 2)) {
+    Serial. println("[INFO] Tarjeta ya procesada recientemente");
+    return;
+  }
+
+  // Actualizar variables de control
+  tiempoUltimaLectura = tiempoActual;
+  ultimoRFIDLeido = rfidUID;
+  esperandoRespuesta = true;
+  tiempoInicioEspera = tiempoActual;
+
+  // Enviar RFID por MQTT para validación
+  Serial.print("[MQTT] Enviando UID para validación: ");
+  Serial. println(rfidUID);
+
+  if (client.publish(topic_verificar, rfidUID. c_str())) {
+    Serial.println("[MQTT] ✓ UID enviado correctamente");
+    Serial.println("[INFO] Esperando respuesta del servidor...");
+  } else {
+    Serial.println("[MQTT] ✗ Error al enviar UID");
+    esperandoRespuesta = false;
+  }
+}
+
+// ========================================
+// SETUP
+// ========================================
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n=== ESP32 PUERTA - MODULO 3 ===");
+  delay(100);
 
+  Serial.println();
+  Serial.println("========================================");
+  Serial.println("  SmartPort v2.0 - MÓDULO 3");
+  Serial. println("  Control de Puerta con RFID");
+  Serial.println("========================================");
+  Serial.println();
+
+  // Configurar pin del motor
   pinMode(MOTOR_PIN, OUTPUT);
   digitalWrite(MOTOR_PIN, LOW);
+  Serial.println("[MOTOR] Pin configurado (GPIO 13)");
 
+  // Inicializar SPI y RFID
   SPI.begin();
   rfid.PCD_Init();
   
   Serial.println("[RFID] Lector RC522 inicializado");
+  Serial.print("[RFID] Versión del firmware: 0x");
+  Serial.println(rfid.PCD_ReadRegister(rfid. VersionReg), HEX);
+  
+  // Verificar si el lector está funcionando
+  if (rfid. PCD_ReadRegister(rfid.VersionReg) == 0x00 || 
+      rfid.PCD_ReadRegister(rfid. VersionReg) == 0xFF) {
+    Serial.println("[RFID] ✗ ERROR: No se detecta el lector RC522");
+    Serial.println("[RFID] Verifique las conexiones SPI");
+  } else {
+    Serial.println("[RFID] ✓ Lector funcionando correctamente");
+  }
 
+  // Conectar WiFi
   setupWiFi();
 
-  client.setServer(mqtt_server, 1883);
-  client. setCallback(callback);
+  // Configurar MQTT
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
 
-  Serial.println("\n[SISTEMA] Listo.  Esperando tarjetas RFID...\n");
+  // Conectar MQTT
+  reconnectMQTT();
+
+  Serial.println();
+  Serial.println("========================================");
+  Serial.println("[OK] Sistema listo");
+  Serial.println("[INFO] Esperando tarjetas RFID...");
+  Serial.println("========================================");
+  Serial.println();
 }
 
+// ========================================
+// LOOP
+// ========================================
 void loop() {
+  // Mantener conexión MQTT
   if (!client.connected()) {
     reconnectMQTT();
   }
-  client. loop();
+  client.loop();
 
+  // Verificar timeout de respuesta
   if (esperandoRespuesta) {
-    return;
+    unsigned long tiempoActual = millis();
+    if (tiempoActual - tiempoInicioEspera > TIMEOUT_RESPUESTA) {
+      Serial.println("[TIMEOUT] No se recibió respuesta del servidor");
+      Serial.println("[INFO] Puede reintentar con la tarjeta");
+      esperandoRespuesta = false;
+    }
   }
 
-  if (millis() - tiempoUltimaLectura < DELAY_LECTURAS) {
-    return;
+  // Detectar tarjetas RFID
+  if (! esperandoRespuesta && rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    // Leer UID de la tarjeta
+    String rfidUID = leerRFID();
+    
+    // Procesar RFID
+    procesarRFID(rfidUID);
+    
+    // Detener comunicación con la tarjeta
+    rfid.PICC_HaltA();
+    rfid.PCD_StopCrypto1();
   }
 
-  if (! rfid.PICC_IsNewCardPresent()) {
-    return;
-  }
-
-  if (! rfid.PICC_ReadCardSerial()) {
-    return;
-  }
-
-  String rfid_uid = "";
-  for (byte i = 0; i < rfid.uid.size; i++) {
-    rfid_uid += String(rfid. uid.uidByte[i], HEX);
-  }
-  rfid_uid.toUpperCase();
-
-  Serial.print("[RFID] Tarjeta detectada: ");
-  Serial.println(rfid_uid);
-
-  Serial.print("[MQTT] Publicando a ");
-  Serial.print(topic_verificar);
-  Serial.print(": ");
-  Serial.println(rfid_uid);
-
-  client.publish(topic_verificar, rfid_uid.c_str());
-
-  esperandoRespuesta = true;
-  tiempoUltimaLectura = millis();
-
-  rfid.PICC_HaltA();
-  rfid. PCD_StopCrypto1();
+  // Pequeña pausa para no saturar el CPU
+  delay(100);
 }
