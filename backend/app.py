@@ -11,7 +11,7 @@ VERSIÓN FINAL:
 - Integración completa con ESP8266 (Módulo 2 y 3)
 - Check-in automático al completar registro
 - Verificación de acceso con apertura de puerta
-- FORMATO RFID: HEXADECIMAL 8 caracteres (compatible con ESP8266)
+- FORMATO RFID: HEXADECIMAL 8 caracteres (compatible ESP8266)
 """
 
 from flask import Flask, request, jsonify
@@ -52,7 +52,7 @@ CORS(app)
 # CONFIGURACION MQTT
 # ========================================
 
-MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt. cool")
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt.cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC_VERIFICAR_RFID = "aeropuerto/verificar_rfid"  # ESP8266 Puerta envia RFID
 MQTT_TOPIC_PUERTA_RESPUESTA = "aeropuerto/puerta/respuesta"  # Raspberry responde ABRIR/DENEGAR
@@ -120,7 +120,7 @@ def verificar_rfid_para_puerta(rfid_uid):
     """
     MODULO 3: Verificar si un RFID puede abrir la puerta fisica
     Valida que:
-    1. Tenga registro en accesos_puerta (paso check-in en Modulo 1)
+    1.  Tenga registro en accesos_puerta (paso check-in en Modulo 1)
     2. Estado = VALIDADO
     3. NO haya abierto la puerta antes (puerta_abierta = FALSE)
     """
@@ -210,7 +210,7 @@ def registrar_peso_equipaje(peso_kg):
         print(f"[OK] Peso {peso_kg:. 2f} kg registrado en BD")
         
         # Mostrar advertencia si hay sobrepeso
-        if peso_kg > 2.0:
+        if peso_kg > 23. 0:
             print(f"[WARNING] SOBREPESO detectado: {peso_kg:.2f} kg (límite: 23 kg)")
         
     except Exception as e:
@@ -226,27 +226,15 @@ mqtt_client.on_message = on_message
 # ========================================
 # INICIAR MQTT CON MANEJO DE ERRORES
 # ========================================
-# ========================================
-# INICIAR MQTT CON MANEJO DE ERRORES
-# ========================================
-def iniciar_mqtt_async():
-    """Iniciar MQTT en segundo plano sin bloquear Flask"""
-    global mqtt_conectado
-    print(f"[INFO] Conectando a MQTT en segundo plano: {MQTT_BROKER}:{MQTT_PORT}")
-    try:
-        mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        mqtt_client. loop_start()
-        mqtt_conectado = True
-        print("[OK] ✓ MQTT conectado correctamente")
-    except Exception as e:
-        mqtt_conectado = False
-        print(f"[WARNING] ✗ MQTT no disponible: {e}")
-        print("[INFO] Sistema funcionará solo con Módulo 1")
-
-# Iniciar MQTT en thread separado (no bloqueante)
-mqtt_thread = threading.Thread(target=iniciar_mqtt_async, daemon=True, name="MQTT-Thread")
-mqtt_thread.start()
-print("[INFO] MQTT iniciando en segundo plano...")
+try:
+    print(f"[INFO] Conectando a MQTT: {MQTT_BROKER}:{MQTT_PORT}")
+    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    mqtt_client.loop_start()
+    print("[OK] MQTT habilitado para Modulos 2 y 3")
+except Exception as e:
+    print(f"[WARNING] MQTT no disponible: {e}")
+    print("[INFO] Solo Modulo 1 estara operativo")
+    mqtt_conectado = False
 
 # ========================================
 # FUNCIONES AUXILIARES
@@ -396,7 +384,7 @@ def capturar_rostro():
                 print(f"[DEBUG] No se detectó rostro en frame {intentos+1}")
             
             intentos += 1
-            time.sleep(0.3)
+            time. sleep(0.3)
         
         cap.release()
         print(f"[ERROR] ✗ No se detectó ningún rostro después de {max_intentos} intentos (~10s)")
@@ -475,7 +463,7 @@ def admin_login():
             'error': str(e)
         }), 500
 
-@app. route('/api/admin/registrar-admin', methods=['POST'])
+@app.route('/api/admin/registrar-admin', methods=['POST'])
 def registrar_nuevo_admin():
     """Registrar un nuevo administrador"""
     try:
@@ -675,7 +663,7 @@ def admin_completar_registro():
             conn = get_db_connection()
             if conn:
                 try:
-                    cursor = conn.cursor()
+                    cursor = conn. cursor()
                     cursor.execute("""
                         UPDATE pasajeros 
                         SET rfid_uid = NULL 
@@ -819,7 +807,7 @@ def usuario_verificar_acceso():
         print(f"[OK] PASO 4: Similitud facial: {porcentaje_similitud:.2f}%")
         
         # PASO 5: Decidir si permitir acceso (umbral 60%)
-        if porcentaje_similitud >= 50.0:
+        if porcentaje_similitud >= 60. 0:
             print("="*60)
             print("[OK] ACCESO CONCEDIDO")
             print("="*60)
@@ -849,7 +837,7 @@ def usuario_verificar_acceso():
         else:
             print("="*60)
             print("[ERROR] ACCESO DENEGADO")
-            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:. 2f}% (minimo: 60%)")
+            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:.2f}% (minimo: 60%)")
             print("="*60 + "\n")
             
             return jsonify({
@@ -904,4 +892,4 @@ if __name__ == '__main__':
     print("Flask Server: http://0.0.0.0:5000")
     print("="*60 + "\n")
     
-    app.run(host='0. 0.0.0', port=5000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
