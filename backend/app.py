@@ -121,8 +121,13 @@ def verificar_rfid_para_puerta(rfid_uid):
     MODULO 3: Verificar si un RFID puede abrir la puerta fisica
     Valida que:
     1.  Tenga registro en accesos_puerta (paso check-in en Modulo 1)
-    2.  Estado = ABORDADO (ya pasó check-in facial)
+    2. Estado = ABORDADO (ya pasó check-in facial)
     3. NO haya abierto la puerta antes (puerta_abierta = FALSE)
+    
+    Si todo OK:
+    - Envía "ABRIR" al ESP8266
+    - Actualiza puerta_abierta = TRUE
+    - Cambia estado del pasajero a COMPLETO
     """
     conn = get_db_connection()
     if not conn:
@@ -135,7 +140,7 @@ def verificar_rfid_para_puerta(rfid_uid):
         
         # Buscar pasajero por RFID (formato HEX 8 caracteres)
         cursor. execute("""
-            SELECT p.id_pasajero, p.nombre_normalizado, p. estado,
+            SELECT p. id_pasajero, p. nombre_normalizado, p. estado,
                    a.id_acceso, a. puerta_abierta
             FROM pasajeros p
             LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
@@ -185,7 +190,8 @@ def verificar_rfid_para_puerta(rfid_uid):
         
         mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "ABRIR")
         
-        # Marcar como usado en BD
+        # ACTUALIZACIÓN 1: Marcar puerta como usada en accesos_puerta
+        print("[INFO] Actualizando BD: puerta_abierta = TRUE")
         cursor.execute("""
             UPDATE accesos_puerta 
             SET puerta_abierta = TRUE,
@@ -193,15 +199,27 @@ def verificar_rfid_para_puerta(rfid_uid):
             WHERE id_acceso = %s
         """, (resultado['id_acceso'],))
         
+        # ACTUALIZACIÓN 2: Cambiar estado del pasajero a COMPLETO
+        print("[INFO] Actualizando BD: estado pasajero = COMPLETO")
+        cursor.execute("""
+            UPDATE pasajeros 
+            SET estado = 'COMPLETO'
+            WHERE id_pasajero = %s
+        """, (resultado['id_pasajero'],))
+        
+        # COMMIT: Guardar ambos cambios
         conn.commit()
-        print(f"[OK] ✓ Puerta marcada como usada en BD")
-        print(f"[INFO] Este RFID no podrá volver a abrir la puerta")
+        
+        print(f"[OK] ✓ Puerta marcada como usada en BD (puerta_abierta = TRUE)")
+        print(f"[OK] ✓ Estado del pasajero actualizado: ABORDADO → COMPLETO")
+        print(f"[INFO] Proceso completado - Pasajero {resultado['nombre_normalizado']} ha abordado")
+        print("="*60)
         
     except Exception as e:
         print(f"[ERROR] Error verificando RFID para puerta: {e}")
         import traceback
         traceback.print_exc()
-        mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+        mqtt_client. publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
     finally:
         cursor.close()
         conn.close()
