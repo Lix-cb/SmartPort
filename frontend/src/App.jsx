@@ -5,10 +5,10 @@ import AdminPanel from "./pages/AdminPanel.jsx";
 import AdminRegistro from "./pages/AdminRegistro.jsx";
 import AdminRFID from "./pages/AdminRFID.jsx";
 import AdminCamara from "./pages/AdminCamara.jsx";
-import UsuarioAcceso from "./pages/UsuarioAcceso.jsx";
 import AdminRegistrarAdmin from "./pages/AdminRegistrarAdmin";
-import DashboardPesos from "./pages/DashboardPesos";
-import UsuarioRFID from "./pages/UsuarioRFID. jsx";
+
+// ✅ NUEVAS IMPORTACIONES - Flujo de Usuario dividido
+import UsuarioRFID from "./pages/UsuarioRFID.jsx";
 import UsuarioCamara from "./pages/UsuarioCamara.jsx";
 
 export default function App() {
@@ -25,12 +25,10 @@ export default function App() {
         <Route path="/admin-rfid" element={<AdminRFID />} />
         <Route path="/admin-camara" element={<AdminCamara />} />
         <Route path="/admin-registrar-admin" element={<AdminRegistrarAdmin />} />
-        <Route path="/dashboard-pesos" element={<DashboardPesos />} />
+        
+        {/* ✅ NUEVO: Flujo Usuario (2 páginas separadas) */}
         <Route path="/usuario-acceso" element={<UsuarioRFID />} />
         <Route path="/usuario-camara" element={<UsuarioCamara />} />
-        
-        {/* Flujo Usuario */}
-        <Route path="/usuario-acceso" element={<UsuarioAcceso />} />
       </Routes>
     </Router>
   );
