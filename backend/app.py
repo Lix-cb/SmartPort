@@ -980,7 +980,7 @@ def usuario_verificar_acceso():
 def dashboard_pesos():
     """
     Obtener los últimos pesos registrados
-    Opcionalmente filtrar por fecha
+    Límite de sobrepeso: 2 kg
     """
     try:
         # Parámetros opcionales
@@ -995,15 +995,15 @@ def dashboard_pesos():
         
         cursor = conn.cursor()
         
-        # Obtener últimos pesos
+        # Obtener últimos pesos (AJUSTADO: límite 2kg)
         cursor.execute("""
             SELECT 
                 id_peso,
                 peso_kg,
                 fecha_hora,
                 CASE 
-                    WHEN peso_kg > 23. 0 THEN 'SOBREPESO'
-                    WHEN peso_kg > 20.0 THEN 'ADVERTENCIA'
+                    WHEN peso_kg > 2.0 THEN 'SOBREPESO'
+                    WHEN peso_kg > 1. 5 THEN 'ADVERTENCIA'
                     ELSE 'NORMAL'
                 END as estado
             FROM pesos_equipaje
@@ -1013,19 +1013,19 @@ def dashboard_pesos():
         
         pesos = cursor.fetchall()
         
-        # Estadísticas
+        # Estadísticas (AJUSTADO: límite 2kg)
         cursor.execute("""
             SELECT 
                 COUNT(*) as total,
                 AVG(peso_kg) as promedio,
                 MAX(peso_kg) as maximo,
                 MIN(peso_kg) as minimo,
-                SUM(CASE WHEN peso_kg > 23.0 THEN 1 ELSE 0 END) as sobrepesos
+                SUM(CASE WHEN peso_kg > 2.0 THEN 1 ELSE 0 END) as sobrepesos
             FROM pesos_equipaje
             WHERE DATE(fecha_hora) = CURDATE()
         """)
         
-        stats = cursor. fetchone()
+        stats = cursor.fetchone()
         
         cursor.close()
         conn.close()
@@ -1050,6 +1050,7 @@ def dashboard_pesos():
             'status': 'error',
             'error': str(e)
         }), 500
+
 
 # ========================================
 # INICIAR SERVIDOR
