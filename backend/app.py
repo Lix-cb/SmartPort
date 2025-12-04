@@ -544,6 +544,52 @@ def admin_crear_pasajero():
             'error': str(e)
         }), 500
 
+@app.route('/api/admin/registrar-rfid', methods=['POST'])
+def admin_registrar_rfid():
+    """Registrar RFID de un pasajero"""
+    try:
+        data = request.json
+        id_pasajero = data.get('id_pasajero')
+        
+        if not id_pasajero:
+            return jsonify({
+                'status': 'error',
+                'error': 'ID de pasajero requerido'
+            }), 400
+        
+        print(f"\n=== REGISTRAR RFID - Pasajero ID: {id_pasajero} ===")
+        
+        # Leer RFID
+        rfid_uid = leer_rfid(timeout=15)
+        
+        if not rfid_uid:
+            print("[ERROR] No se detecto tarjeta RFID")
+            return jsonify({
+                'status': 'error',
+                'error': 'No se detecto tarjeta RFID'
+            }), 400
+        
+        # Registrar RFID
+        if registrar_rfid_pasajero(id_pasajero, rfid_uid):
+            print(f"[OK] RFID registrado: {rfid_uid}")
+            return jsonify({
+                'status': 'ok',
+                'rfid_uid': rfid_uid
+            })
+        else:
+            print("[ERROR] Error al registrar RFID (posible duplicado)")
+            return jsonify({
+                'status': 'error',
+                'error': 'Error al registrar RFID (posible RFID duplicado)'
+            }), 400
+            
+    except Exception as e:
+        print(f"[ERROR] Error: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
 @app.route('/api/admin/registrar-rostro', methods=['POST'])
 def admin_registrar_rostro():
     """Capturar y registrar rostro de un pasajero"""
