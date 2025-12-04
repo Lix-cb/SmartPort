@@ -1059,7 +1059,7 @@ def usuario_verificar_rostro():
 # ENDPOINTS - DASHBOARD
 # ========================================
 
-@app. route('/api/admin/dashboard-pesos', methods=['GET'])
+@app.route('/api/admin/dashboard-pesos', methods=['GET'])
 def dashboard_pesos():
     """
     Obtener los últimos pesos registrados
@@ -1078,7 +1078,7 @@ def dashboard_pesos():
         
         cursor = conn. cursor()
         
-        # Obtener últimos pesos (AJUSTADO: límite 2kg)
+        # ✅ CORREGIDO: Quitar espacio en 1.5
         cursor.execute("""
             SELECT 
                 id_peso,
@@ -1094,7 +1094,7 @@ def dashboard_pesos():
             LIMIT %s
         """, (limite,))
         
-        pesos = cursor. fetchall()
+        pesos = cursor.fetchall()
         
         # Estadísticas (AJUSTADO: límite 2kg)
         cursor.execute("""
