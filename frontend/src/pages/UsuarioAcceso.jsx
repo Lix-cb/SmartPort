@@ -13,87 +13,95 @@ export default function UsuarioAcceso() {
   const [paso, setPaso] = useState(1); // 1=RFID, 2=Rostro
   const [rfidValido, setRfidValido] = useState(false); // NUEVO: Para controlar si RFID es válido
 
-  const handleVerificar = async () => {
-    setLoading(true);
-    setEstado("escaneandoRFID");
-    setPaso(1);
-    setRfidValido(false); // Reset
-    setMensaje("Acerque su tarjeta RFID...");
+const handleVerificar = async () => {
+  setLoading(true);
+  setEstado("escaneandoRFID");
+  setPaso(1);
+  setRfidValido(false);
+  setMensaje("Acerque su tarjeta RFID.. .");
 
-    try {
-      const response = await fetch(`${API_URL}/api/usuario/verificar-acceso`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" }
-      });
+  try {
+    const response = await fetch(`${API_URL}/api/usuario/verificar-acceso`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
 
-      const data = await response.json();
+    const data = await response.json();
 
-      // CAMBIO 1: Si RFID no es válido, NO mostrar "Mire a la cámara"
-      if (response.status === 404 && data.error === "RFID no registrado") {
-        setEstado("error");
-        setMensaje("Tarjeta RFID no registrada en el sistema");
-        setRfidValido(false); // NO pasar a captura de rostro
-        
-        setTimeout(() => {
-          setEstado("esperando");
-          setMensaje("");
-          setPaso(1);
-        }, 4000);
-        setLoading(false);
-        return;
-      }
+    // ===== VALIDACIÓN 1: RFID no registrado =====
+    if (response.status === 404 && data.error === "RFID no registrado") {
+      setEstado("error");
+      setMensaje("Tarjeta RFID no registrada en el sistema");
+      setRfidValido(false);
+      
+      setTimeout(() => {
+        setEstado("esperando");
+        setMensaje("");
+        setPaso(1);
+      }, 4000);
+      setLoading(false);
+      return;
+    }
 
-      // Si RFID es válido, mostrar paso 2
-      setRfidValido(true);
-      setEstado("capturandoRostro");
-      setPaso(2);
-      setMensaje("Mire a la cámara.. .");
+    // ===== VALIDACIÓN 2: Ya completó proceso (ABORDADO/COMPLETO) =====
+    if (response.status === 403 && data.error === "Ya completó el proceso de abordaje") {
+      setEstado("error");
+      setMensaje(`Ya completó el proceso de abordaje (Estado: ${data.estado_actual})`);
+      setRfidValido(false);
+      
+      setTimeout(() => {
+        setEstado("esperando");
+        setMensaje("");
+        setPaso(1);
+      }, 4000);
+      setLoading(false);
+      return;
+    }
 
-      // Esperar un poco para que se vea la transición
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    // ===== VALIDACIÓN 3: Pasajero sin biometría =====
+    if (data.error === "Pasajero sin biometria registrada") {
+      setEstado("error");
+      setMensaje("Complete su registro biométrico en el mostrador");
+      setRfidValido(false);
+      
+      setTimeout(() => {
+        setEstado("esperando");
+        setMensaje("");
+        setPaso(1);
+      }, 4000);
+      setLoading(false);
+      return;
+    }
 
-      if (response.ok && data.status === "ok" && data.acceso === "concedido") {
-        setEstado("exito");
-        setPasajeroInfo(data.pasajero);
-        setSimilitud(data.similitud);
-        setMensaje(`Bienvenido ${data.pasajero.nombre}`);
-        
-        setTimeout(() => {
-          setEstado("esperando");
-          setMensaje("");
-          setPasajeroInfo(null);
-          setSimilitud(null);
-          setPaso(1);
-          setRfidValido(false);
-        }, 6000);
-      } else if (data.error === "Biometria no coincide") {
-        // CAMBIO 3: NO TOCAR - Mantener cruz roja
-        setEstado("error");
-        setMensaje("Los datos biométricos no coinciden");
-        
-        setTimeout(() => {
-          setEstado("esperando");
-          setMensaje("");
-          setPaso(1);
-          setRfidValido(false);
-        }, 4000);
-      } else {
-        // CAMBIO 2: Otros errores con guión amarillo
-        setEstado("errorGeneral");
-        setMensaje("Error en la verificación.  Por favor, intente nuevamente");
-        
-        setTimeout(() => {
-          setEstado("esperando");
-          setMensaje("");
-          setPaso(1);
-          setRfidValido(false);
-        }, 4000);
-      }
-    } catch (err) {
-      // CAMBIO 2: Error de conexión con guión amarillo
-      setEstado("errorGeneral");
-      setMensaje("Error de conexión.  Por favor, intente nuevamente");
-      console.error(err);
+    // ===== SI LLEGÓ AQUÍ: RFID VÁLIDO → MOSTRAR "MIRE A LA CÁMARA" =====
+    setRfidValido(true);
+    setEstado("capturandoRostro");
+    setPaso(2);
+    setMensaje("Mire a la cámara.. .");
+
+    // Dar 2 segundos para que el usuario vea el mensaje y se posicione
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // ===== EVALUAR RESULTADO DE VERIFICACIÓN BIOMÉTRICA =====
+    if (response.ok && data.status === "ok" && data.acceso === "concedido") {
+      // ÉXITO: Biometría coincide
+      setEstado("exito");
+      setPasajeroInfo(data.pasajero);
+      setSimilitud(data.similitud);
+      setMensaje(`Bienvenido ${data.pasajero.nombre}`);
+      
+      setTimeout(() => {
+        setEstado("esperando");
+        setMensaje("");
+        setPasajeroInfo(null);
+        setSimilitud(null);
+        setPaso(1);
+        setRfidValido(false);
+      }, 6000);
+    } else if (data.error === "Biometria no coincide") {
+      // ERROR: Biometría no coincide (CRUZ ROJA)
+      setEstado("error");
+      setMensaje("Los datos biométricos no coinciden");
       
       setTimeout(() => {
         setEstado("esperando");
@@ -101,11 +109,45 @@ export default function UsuarioAcceso() {
         setPaso(1);
         setRfidValido(false);
       }, 4000);
-    } finally {
-      setLoading(false);
+    } else if (data.error === "No se detecto rostro") {
+      // ERROR: No detectó rostro (GUIÓN AMARILLO)
+      setEstado("errorGeneral");
+      setMensaje("No se detectó ningún rostro.  Por favor, intente nuevamente");
+      
+      setTimeout(() => {
+        setEstado("esperando");
+        setMensaje("");
+        setPaso(1);
+        setRfidValido(false);
+      }, 4000);
+    } else {
+      // ERROR GENERAL (GUIÓN AMARILLO)
+      setEstado("errorGeneral");
+      setMensaje("Error en la verificación.  Por favor, intente nuevamente");
+      
+      setTimeout(() => {
+        setEstado("esperando");
+        setMensaje("");
+        setPaso(1);
+        setRfidValido(false);
+      }, 4000);
     }
-  };
-
+  } catch (err) {
+    // ERROR DE CONEXIÓN (GUIÓN AMARILLO)
+    setEstado("errorGeneral");
+    setMensaje("Error de conexión.  Por favor, intente nuevamente");
+    console.error(err);
+    
+    setTimeout(() => {
+      setEstado("esperando");
+      setMensaje("");
+      setPaso(1);
+      setRfidValido(false);
+    }, 4000);
+  } finally {
+    setLoading(false);
+  }
+};
   // Estado: Escaneando RFID
 if (estado === "escaneandoRFID") {
   return (
