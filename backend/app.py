@@ -209,7 +209,7 @@ def registrar_peso_equipaje(peso_kg):
         print(f"[OK] Peso {peso_kg:. 2f} kg registrado en BD")
         
         # Mostrar advertencia si hay sobrepeso
-        if peso_kg > 23. 0:
+        if peso_kg > 2.0:
             print(f"[WARNING] SOBREPESO detectado: {peso_kg:.2f} kg (límite: 23 kg)")
         
     except Exception as e:
