@@ -1,5 +1,5 @@
 """
-app.py - API REST para SmartPort v2.0
+app.py - API REST para SmartPort v2. 0
 Sistema de registro y acceso con RFID + Reconocimiento facial
 
 MODULO 1: Registro y validacion biometrica con Raspberry Pi
@@ -124,12 +124,12 @@ def verificar_rfid_para_puerta(rfid_uid):
     1. Envía "ABRIR" al ESP8266
     2. Actualiza accesos_puerta. puerta_abierta = 1
     3. Actualiza pasajeros.estado = 'COMPLETO'
-    4.  Guarda con COMMIT
+    4. Guarda con COMMIT
     """
     conn = get_db_connection()
     if not conn:
         print("[ERROR] No se pudo conectar a la base de datos")
-        mqtt_client. publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+        mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
         return
     
     cursor = None
@@ -152,7 +152,7 @@ def verificar_rfid_para_puerta(rfid_uid):
         
         if not resultado:
             print(f"[ERROR] RFID {rfid_uid} no encontrado en sistema")
-            mqtt_client. publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
+            mqtt_client.publish(MQTT_TOPIC_PUERTA_RESPUESTA, "DENEGAR")
             return
         
         id_pasajero = resultado['id_pasajero']
@@ -171,7 +171,7 @@ def verificar_rfid_para_puerta(rfid_uid):
         # PASO 2: VALIDACIONES
         # ============================================
         
-        # Validación 1: Tiene check-in completado? 
+        # Validación 1: Tiene check-in completado?  
         if not id_acceso:
             print(f"[ERROR] Sin check-in facial completado")
             print(f"[INFO] Debe pasar primero por Módulo 1")
@@ -254,8 +254,8 @@ def verificar_rfid_para_puerta(rfid_uid):
         cursor.execute("""
             SELECT p.estado, a.puerta_abierta, a.fecha_hora
             FROM pasajeros p
-            LEFT JOIN accesos_puerta a ON p. id_pasajero = a. id_pasajero
-            WHERE p.id_pasajero = %s
+            LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
+            WHERE p. id_pasajero = %s
         """, (id_pasajero,))
         
         verificacion = cursor.fetchone()
@@ -379,7 +379,7 @@ def leer_rfid(timeout=30):
         resultado = {'rfid': None, 'error': None, 'completado': False}
         
         def leer_bloqueante():
-            """Thread interno que ejecuta reader.read() bloqueante"""
+            """Thread interno que ejecuta reader. read() bloqueante"""
             try:
                 id, text = reader.read()  # BLOQUEANTE
                 
@@ -578,7 +578,7 @@ def admin_login():
             'error': str(e)
         }), 500
 
-@app.route('/api/admin/registrar-admin', methods=['POST'])
+@app. route('/api/admin/registrar-admin', methods=['POST'])
 def registrar_nuevo_admin():
     """Registrar un nuevo administrador"""
     try:
@@ -855,90 +855,164 @@ def admin_completar_registro():
 # ENDPOINTS - USUARIO (ACCESO) - MODULO 1
 # ========================================
 
-@app.route('/api/usuario/verificar-acceso', methods=['POST'])
-def usuario_verificar_acceso():
+@app.route('/api/usuario/validar-rfid', methods=['POST'])
+def usuario_validar_rfid():
     """
-    Verificar acceso con RFID + rostro
-    MODULO 1: Registra validacion en BD y actualiza estado para Módulo 3
+    PASO 1: Solo validar que el RFID existe en BD
+    NO cambia el estado del pasajero
+    NO captura rostro todavía
     """
     try:
-        # PASO 1: Leer RFID
         print("\n" + "="*60)
-        print("=== INICIO VERIFICACION ACCESO - MODULO 1 ===")
+        print("=== PASO 1: VALIDACIÓN DE RFID ===")
         print("="*60)
         
         rfid_uid = leer_rfid(timeout=15)
         
         if not rfid_uid:
-            print("[ERROR] PASO 1 FALLIDO: No se detecto tarjeta RFID")
+            print("[ERROR] No se detectó tarjeta RFID")
             return jsonify({
                 'status': 'error',
-                'error': 'No se detecto tarjeta RFID'
+                'error': 'No se detectó tarjeta RFID'
             }), 400
         
-        print(f"[OK] PASO 1: RFID detectado: {rfid_uid}")
-                # PASO 2: Buscar pasajero con ese RFID
+        print(f"[OK] RFID detectado: {rfid_uid}")
+        
+        # Buscar pasajero con ese RFID
         pasajero = buscar_pasajero_por_rfid(rfid_uid)
         
         if not pasajero:
-            print("[ERROR] PASO 2 FALLIDO: RFID no encontrado en la base de datos")
+            print("[ERROR] RFID no encontrado en la base de datos")
             return jsonify({
                 'status': 'error',
                 'error': 'RFID no registrado'
             }), 404
         
-        print(f"[OK] PASO 2: Pasajero encontrado: {pasajero['nombre_normalizado']}")
+        print(f"[OK] Pasajero encontrado: {pasajero['nombre_normalizado']}")
         print(f"[INFO] Vuelo: {pasajero['numero_vuelo']} - Destino: {pasajero['destino']}")
+        print(f"[INFO] Estado actual: {pasajero['estado']}")
         
-        # VALIDAR: Si ya completó el proceso (ABORDADO o COMPLETO), no puede volver a verificar
+        # VALIDACIÓN 1: Si ya completó el proceso (ABORDADO o COMPLETO), no puede volver a verificar
         if pasajero['estado'] in ['ABORDADO', 'COMPLETO']:
             print(f"[INFO] Pasajero ya completó el proceso - Estado: {pasajero['estado']}")
             return jsonify({
                 'status': 'error',
-                'acceso': 'denegado',
                 'error': 'Ya completó el proceso de abordaje',
                 'estado_actual': pasajero['estado']
             }), 403
         
-        # Verificar que tenga rostro registrado
+        # VALIDACIÓN 2: Verificar que tenga rostro registrado
         if pasajero['rostro_embedding'] is None:
-            print("[ERROR] PASO 2 FALLIDO: Pasajero sin rostro registrado")
+            print("[ERROR] Pasajero sin rostro registrado")
             return jsonify({
                 'status': 'error',
                 'error': 'Pasajero sin biometria registrada'
             }), 400
-        # PASO 3: Capturar rostro actual
-        print("[INFO] PASO 3: Capturando rostro actual...")
+        
+        # TODO OK - RFID válido, retornar datos del pasajero
+        print("[OK] RFID válido - Listo para captura de rostro")
+        print("="*60 + "\n")
+        
+        return jsonify({
+            'status': 'ok',
+            'pasajero': {
+                'id_pasajero': pasajero['id_pasajero'],
+                'nombre': pasajero['nombre_normalizado'],
+                'vuelo': pasajero['numero_vuelo'],
+                'destino': pasajero['destino']
+            }
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Error en validación de RFID: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/usuario/verificar-rostro', methods=['POST'])
+def usuario_verificar_rostro():
+    """
+    PASO 2: Capturar y verificar rostro
+    SOLO si la verificación es exitosa, cambia el estado a ABORDADO
+    """
+    try:
+        data = request.json
+        id_pasajero = data.get('id_pasajero')
+        
+        if not id_pasajero:
+            return jsonify({
+                'status': 'error',
+                'error': 'ID de pasajero requerido'
+            }), 400
+        
+        print("\n" + "="*60)
+        print("=== PASO 2: VERIFICACIÓN DE ROSTRO ===")
+        print(f"ID Pasajero: {id_pasajero}")
+        print("="*60)
+        
+        # Buscar pasajero por ID (necesitamos crear esta función o usar buscar_pasajero_por_rfid)
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'status': 'error',
+                'error': 'Error de conexión a BD'
+            }), 500
+        
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id_pasajero, nombre_normalizado, numero_vuelo, destino, 
+                   rostro_embedding, estado
+            FROM pasajeros
+            WHERE id_pasajero = %s
+        """, (id_pasajero,))
+        
+        pasajero = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if not pasajero:
+            print("[ERROR] Pasajero no encontrado")
+            return jsonify({
+                'status': 'error',
+                'error': 'Pasajero no encontrado'
+            }), 404
+        
+        print(f"[INFO] Pasajero: {pasajero['nombre_normalizado']}")
+        
+        # Capturar rostro actual
+        print("[INFO] Capturando rostro actual...")
         embedding_actual = capturar_rostro()
         
         if embedding_actual is None:
-            print("[ERROR] PASO 3 FALLIDO: No se pudo capturar rostro")
+            print("[ERROR] No se pudo capturar rostro")
+            # NO cambiar estado
             return jsonify({
                 'status': 'error',
-                'error': 'No se detecto rostro'
+                'error': 'No se detectó rostro'
             }), 400
         
-        print("[OK] PASO 3: Rostro capturado correctamente")
+        print("[OK] Rostro capturado correctamente")
         
-        # PASO 4: Comparar rostros
-        print("[INFO] PASO 4: Comparando rostros...")
+        # Comparar rostros
+        print("[INFO] Comparando rostros...")
         porcentaje_similitud = calcular_similitud_facial(
             pasajero['rostro_embedding'],
             embedding_actual
         )
         
-        print(f"[OK] PASO 4: Similitud facial: {porcentaje_similitud:.2f}%")
+        print(f"[OK] Similitud facial: {porcentaje_similitud:.2f}%")
         
-        # PASO 5: Decidir si permitir acceso (umbral 60%)
+        # Decidir si permitir acceso (umbral 60%)
         if porcentaje_similitud >= 60.0:
             print("="*60)
-            print("[OK] ACCESO CONCEDIDO")
+            print("[OK] ✓✓✓ ACCESO CONCEDIDO ✓✓✓")
             print("="*60)
             
-            # Registrar acceso en BD
-            print("[INFO] PASO 5: Registrando acceso en base de datos...")
+            # AQUÍ SÍ: Registrar acceso en BD (cambia estado a ABORDADO)
+            print("[INFO] Registrando acceso y cambiando estado a ABORDADO...")
             registrar_acceso(pasajero['id_pasajero'], porcentaje_similitud)
-            print("[OK] PASO 5: Acceso registrado en BD")
+            print("[OK] Estado actualizado a ABORDADO")
             print("[INFO] Pasajero ahora puede usar Módulo 3 (puerta física)")
             
             print("="*60)
@@ -960,9 +1034,10 @@ def usuario_verificar_acceso():
         else:
             print("="*60)
             print("[ERROR] ACCESO DENEGADO")
-            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:.2f}% (minimo: 60%)")
+            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:. 2f}% (mínimo: 60%)")
             print("="*60 + "\n")
             
+            # NO cambiar estado
             return jsonify({
                 'status': 'error',
                 'acceso': 'denegado',
@@ -972,7 +1047,7 @@ def usuario_verificar_acceso():
             
     except Exception as e:
         print("="*60)
-        print("[ERROR] ERROR EN VERIFICACION")
+        print("[ERROR] ERROR EN VERIFICACIÓN")
         print(f"[ERROR] Error: {e}")
         print("="*60 + "\n")
         return jsonify({
@@ -1001,7 +1076,7 @@ def dashboard_pesos():
                 'error': 'Error de conexión a BD'
             }), 500
         
-        cursor = conn.cursor()
+        cursor = conn. cursor()
         
         # Obtener últimos pesos (AJUSTADO: límite 2kg)
         cursor.execute("""
@@ -1011,7 +1086,7 @@ def dashboard_pesos():
                 fecha_hora,
                 CASE 
                     WHEN peso_kg > 2.0 THEN 'SOBREPESO'
-                    WHEN peso_kg > 1. 5 THEN 'ADVERTENCIA'
+                    WHEN peso_kg > 1.5 THEN 'ADVERTENCIA'
                     ELSE 'NORMAL'
                 END as estado
             FROM pesos_equipaje
@@ -1019,7 +1094,7 @@ def dashboard_pesos():
             LIMIT %s
         """, (limite,))
         
-        pesos = cursor.fetchall()
+        pesos = cursor. fetchall()
         
         # Estadísticas (AJUSTADO: límite 2kg)
         cursor.execute("""
@@ -1091,8 +1166,9 @@ if __name__ == '__main__':
     print("  ✓ Control de acceso con apertura de puerta")
     print("  ✓ Registro de pesos de equipaje")
     print("  ✓ Formato RFID 8 chars (compatible ESP8266)")
+    print("  ✓ NUEVO: Validación RFID separada del rostro")
     print("="*60)
     print("Flask Server: http://0.0.0.0:5000")
     print("="*60 + "\n")
     
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    app.run(host='0. 0.0.0', port=5000, debug=True, use_reloader=False)
