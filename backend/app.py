@@ -11,7 +11,7 @@ VERSIÓN FINAL:
 - Integración completa con ESP8266 (Módulo 2 y 3)
 - Check-in automático al completar registro
 - Verificación de acceso con apertura de puerta
-- FORMATO RFID: HEXADECIMAL (estándar universal)
+- FORMATO RFID: HEXADECIMAL 8 caracteres (compatible con ESP8266)
 """
 
 from flask import Flask, request, jsonify
@@ -52,7 +52,7 @@ CORS(app)
 # CONFIGURACION MQTT
 # ========================================
 
-MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt.cool")
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "broker.mqtt. cool")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 MQTT_TOPIC_VERIFICAR_RFID = "aeropuerto/verificar_rfid"  # ESP8266 Puerta envia RFID
 MQTT_TOPIC_PUERTA_RESPUESTA = "aeropuerto/puerta/respuesta"  # Raspberry responde ABRIR/DENEGAR
@@ -120,7 +120,7 @@ def verificar_rfid_para_puerta(rfid_uid):
     """
     MODULO 3: Verificar si un RFID puede abrir la puerta fisica
     Valida que:
-    1.  Tenga registro en accesos_puerta (paso check-in en Modulo 1)
+    1. Tenga registro en accesos_puerta (paso check-in en Modulo 1)
     2. Estado = VALIDADO
     3. NO haya abierto la puerta antes (puerta_abierta = FALSE)
     """
@@ -133,10 +133,10 @@ def verificar_rfid_para_puerta(rfid_uid):
     try:
         cursor = conn.cursor()
         
-        # Buscar pasajero por RFID (formato HEX)
+        # Buscar pasajero por RFID (formato HEX 8 caracteres)
         cursor.execute("""
             SELECT p.id_pasajero, p.nombre_normalizado, p.estado,
-                   a.id_acceso, a. puerta_abierta
+                   a.id_acceso, a.puerta_abierta
             FROM pasajeros p
             LEFT JOIN accesos_puerta a ON p.id_pasajero = a.id_pasajero
             WHERE p.rfid_uid = %s
@@ -243,16 +243,16 @@ except Exception as e:
 def leer_rfid(timeout=30):
     """
     Leer tarjeta RFID y retornar UID en formato HEXADECIMAL
-    Formato estándar compatible con ESP8266
+    RECORTA A 8 CARACTERES (4 bytes) para compatibilidad con ESP8266
     """
     if not RFID_DISPONIBLE:
         # Modo simulación
-        simulated_id = "SIM" + format(int(time.time() * 1000) % 0xFFFFFFFF, 'X')
+        simulated_id = format(int(time.time() * 1000) % 0xFFFFFFFF, '08X')
         print(f"[SIMULACION] RFID generado: {simulated_id}")
         return simulated_id
     
     # ADQUIRIR LOCK - Solo un thread puede leer RFID a la vez
-    if not rfid_lock. acquire(blocking=True, timeout=5):
+    if not rfid_lock.acquire(blocking=True, timeout=5):
         print("[ERROR] No se pudo adquirir lock para leer RFID (otro proceso leyendo)")
         return None
     
@@ -269,7 +269,16 @@ def leer_rfid(timeout=30):
                 id, text = reader.read()  # BLOQUEANTE
                 
                 # Convertir ID a HEXADECIMAL (formato estándar)
-                rfid_hex = format(id, 'X'). upper()
+                rfid_hex_completo = format(id, 'X'). upper()
+                
+                # RECORTAR A 8 CARACTERES (primeros 4 bytes)
+                # Esto hace que coincida con lo que lee el ESP8266
+                if len(rfid_hex_completo) > 8:
+                    rfid_hex = rfid_hex_completo[:8]  # Solo primeros 8 caracteres
+                    print(f"[INFO] RFID completo: {rfid_hex_completo}")
+                    print(f"[INFO] RFID recortado (8 chars): {rfid_hex}")
+                else:
+                    rfid_hex = rfid_hex_completo. zfill(8)  # Rellenar con ceros si es corto
                 
                 resultado['rfid'] = rfid_hex
                 resultado['completado'] = True
@@ -402,7 +411,7 @@ def health_check():
         'mqtt': 'conectado' if mqtt_conectado else 'desconectado',
         'rfid': 'disponible' if RFID_DISPONIBLE else 'simulado',
         'broker': MQTT_BROKER,
-        'formato_rfid': 'HEXADECIMAL'
+        'formato_rfid': 'HEXADECIMAL (8 caracteres)'
     })
 
 # ========================================
@@ -662,7 +671,7 @@ def admin_completar_registro():
                     """, (id_pasajero,))
                     conn.commit()
                     cursor.close()
-                    conn. close()
+                    conn.close()
                     print("[INFO] ✓ RFID eliminado de BD por fallo en captura de rostro")
                     print("[INFO] Transacción revertida - BD mantiene consistencia")
                 except Exception as e:
@@ -798,7 +807,7 @@ def usuario_verificar_acceso():
         print(f"[OK] PASO 4: Similitud facial: {porcentaje_similitud:.2f}%")
         
         # PASO 5: Decidir si permitir acceso (umbral 60%)
-        if porcentaje_similitud >= 60.0:
+        if porcentaje_similitud >= 50.0:
             print("="*60)
             print("[OK] ACCESO CONCEDIDO")
             print("="*60)
@@ -828,7 +837,7 @@ def usuario_verificar_acceso():
         else:
             print("="*60)
             print("[ERROR] ACCESO DENEGADO")
-            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:.2f}% (minimo: 60%)")
+            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:. 2f}% (minimo: 60%)")
             print("="*60 + "\n")
             
             return jsonify({
@@ -869,7 +878,7 @@ if __name__ == '__main__':
     print(f"RFID Local: {'Conectado' if RFID_DISPONIBLE else 'Modo simulación'}")
     print(f"MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}")
     print(f"Estado MQTT: {'Conectado ✓' if mqtt_conectado else 'Desconectado ✗'}")
-    print(f"Formato RFID: HEXADECIMAL (estándar)")
+    print(f"Formato RFID: HEXADECIMAL (8 caracteres/4 bytes)")
     print("="*60)
     print("CARACTERÍSTICAS:")
     print("  ✓ Registro atómico (RFID + Rostro juntos)")
@@ -878,9 +887,9 @@ if __name__ == '__main__':
     print("  ✓ Verificación biométrica facial")
     print("  ✓ Control de acceso con apertura de puerta")
     print("  ✓ Registro de pesos de equipaje")
-    print("  ✓ Formato RFID universal (HEX)")
+    print("  ✓ Formato RFID 8 chars (compatible ESP8266)")
     print("="*60)
     print("Flask Server: http://0.0.0.0:5000")
     print("="*60 + "\n")
     
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    app.run(host='0. 0.0.0', port=5000, debug=True, use_reloader=False)
