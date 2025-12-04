@@ -255,21 +255,20 @@ def leer_rfid(timeout=30):
         
         def leer_bloqueante():
             try:
-                id, text = reader.read()
+                id, text = reader.read()  # id es el número grande de SimpleMFRC522
                 
-                # NUEVA LÓGICA: Leer el UID directamente (no el ID extendido)
-                # El UID está en reader. READER. uid
-                from mfrc522 import MFRC522
-                uid_bytes = reader.READER.uid
+                # SimpleMFRC522 devuelve un número muy grande
+                # Necesitamos extraer solo los últimos 4 bytes (32 bits)
                 
-                # Convertir los primeros 4 bytes a decimal (igual que ESP8266)
-                uid_decimal = (uid_bytes[0] << 24) | (uid_bytes[1] << 16) | (uid_bytes[2] << 8) | uid_bytes[3]
+                # Método 1: Usar solo los últimos 32 bits del número
+                uid_decimal = id & 0xFFFFFFFF  # Máscara de 32 bits
                 
                 resultado['rfid'] = str(uid_decimal)
                 resultado['completado'] = True
                 
                 print(f"[OK] RFID leído: {resultado['rfid']}")
-                print(f"[DEBUG] Bytes UID: {' '.join([hex(b) for b in uid_bytes])}")
+                print(f"[DEBUG] ID original SimpleMFRC522: {id}")
+                print(f"[DEBUG] UID convertido (32 bits): {uid_decimal}")
                 
             except Exception as e:
                 resultado['error'] = str(e)
