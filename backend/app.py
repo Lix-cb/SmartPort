@@ -887,6 +887,16 @@ def usuario_verificar_acceso():
                 'status': 'error',
                 'error': 'RFID no registrado'
             }), 404
+
+            # VALIDAR: Si ya completó el proceso (ABORDADO o COMPLETO), no puede volver a verificar
+        if pasajero['estado'] in ['ABORDADO', 'COMPLETO']:
+            print(f"[INFO] Pasajero ya completó el proceso - Estado: {pasajero['estado']}")
+        return jsonify({
+            'status': 'error',
+            'acceso': 'denegado',
+            'error': 'Ya completó el proceso de abordaje',
+            'estado_actual': pasajero['estado']
+            }), 403
         
         print(f"[OK] PASO 2: Pasajero encontrado: {pasajero['nombre_normalizado']}")
         print(f"[INFO] Vuelo: {pasajero['numero_vuelo']} - Destino: {pasajero['destino']}")
