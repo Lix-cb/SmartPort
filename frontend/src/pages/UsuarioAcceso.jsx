@@ -107,48 +107,51 @@ export default function UsuarioAcceso() {
   };
 
   // Estado: Escaneando RFID
-  if (estado === "escaneandoRFID") {
-    return (
-      <div className="container">
-        <img src="/GAP_logo.jpg" alt="Logo GAP" className="logo" />
-        <h2 className="title" style={{ color: "#007bff" }}>Paso 1/2: Escaneo RFID</h2>
-        
+if (estado === "escaneandoRFID") {
+  return (
+    <div className="container">
+      <img src="/GAP_logo.jpg" alt="Logo GAP" className="logo" />
+      <h2 className="title" style={{ color: "#007bff" }}>Paso 1/2: Escaneo RFID</h2>
+      
+      <div style={{
+        backgroundColor: "#e7f3ff",
+        border: "2px solid #b3d9ff",
+        borderRadius: "12px",
+        padding: "40px",
+        marginBottom: "25px",
+        textAlign: "center"
+      }}>
+        {/* SOLO este div gira */}
         <div style={{
-          backgroundColor: "#e7f3ff",
-          border: "2px solid #b3d9ff",
-          borderRadius: "12px",
-          padding: "40px",
-          marginBottom: "25px",
-          textAlign: "center"
-        }}>
-          <div style={{
-            width: "100px",
-            height: "100px",
-            border: "8px solid #007bff",
-            borderTop: "8px solid transparent",
-            borderRadius: "50%",
-            margin: "0 auto 30px",
-            animation: "spin 1.2s linear infinite"
-          }}></div>
-          
-          <div style={{ fontSize: "60px", marginBottom: "20px" }}>📱</div>
-          
-          <p style={{ fontSize: "20px", color: "#0056b3", marginBottom: "10px", fontWeight: "600" }}>
-            {mensaje}
-          </p>
-          <p style={{ fontSize: "14px", color: "#666" }}>
-            Esperando lectura de tarjeta...
-          </p>
-        </div>
-
-        <style>{`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
+          width: "100px",
+          height: "100px",
+          border: "8px solid #007bff",
+          borderTop: "8px solid transparent",
+          borderRadius: "50%",
+          margin: "0 auto 30px",
+          animation: "spin 1.2s linear infinite"
+        }}></div>
+        
+        {/* Este emoji NO gira */}
+        <div style={{ fontSize: "60px", marginBottom: "20px" }}>📱</div>
+        
+        {/* Este texto NO gira */}
+        <p style={{ fontSize: "20px", color: "#0056b3", marginBottom: "10px", fontWeight: "600" }}>
+          {mensaje}
+        </p>
+        <p style={{ fontSize: "14px", color: "#666" }}>
+          Esperando lectura de tarjeta... 
+        </p>
       </div>
-    );
-  }
+
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
 
   // Estado: Capturando rostro
   if (estado === "capturandoRostro") {
