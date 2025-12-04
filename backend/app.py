@@ -24,7 +24,7 @@ import face_recognition
 import numpy as np
 import time
 import threading
-import picke
+import pickle
 
 # Importar funciones de base de datos
 from db import (
