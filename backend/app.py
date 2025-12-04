@@ -121,7 +121,7 @@ def on_message(client, userdata, msg):
             print(f"[INFO] MODULO 2: Peso convertido: {peso:.3f} kg")
             
             # ✅ FIX 3: Validar rango mínimo (0.100 kg en lugar de 0.5)
-            if peso < 0. 0:
+            if peso < 0.0:
                 print(f"[WARNING] Peso negativo: {peso:.3f} kg - Ajustando a 0.0")
                 peso = 0.0
             elif peso < 0.100:
@@ -137,7 +137,7 @@ def on_message(client, userdata, msg):
             # ✅ FIX 5: Si falla conversión, guardar 0.0 como marca de error
             print(f"[ERROR] MODULO 2: No se pudo convertir a float: '{payload}'")
             print(f"[ERROR] Tipo de dato: {type(payload)}, Longitud: {len(payload)}")
-            print(f"[ERROR] Bytes (hex): {payload.encode('utf-8'). hex()}")
+            print(f"[ERROR] Bytes (hex): {payload.encode('utf-8').hex()}")
             print(f"[ERROR] Detalle: {e}")
             print(f"[INFO] Guardando peso 0.0 como registro de error...")
             registrar_peso_equipaje(0.0)
@@ -357,7 +357,7 @@ def registrar_peso_equipaje(peso_kg):
         """, (peso_kg,))
         
         conn.commit()
-        print(f"[OK] Peso {peso_kg:. 2f} kg registrado en BD")
+        print(f"[OK] Peso {peso_kg:.2f} kg registrado en BD")
         
         # Mostrar advertencia si hay sobrepeso
         if peso_kg > 2.0:
@@ -414,12 +414,12 @@ def leer_rfid(timeout=30):
         resultado = {'rfid': None, 'error': None, 'completado': False}
         
         def leer_bloqueante():
-            """Thread interno que ejecuta reader. read() bloqueante"""
+            """Thread interno que ejecuta reader.read() bloqueante"""
             try:
                 id, text = reader.read()  # BLOQUEANTE
                 
                 # Convertir ID a HEXADECIMAL (formato estándar)
-                rfid_hex_completo = format(id, 'X'). upper()
+                rfid_hex_completo = format(id, 'X').upper()
                 
                 # RECORTAR A 8 CARACTERES (primeros 4 bytes)
                 # Esto hace que coincida con lo que lee el ESP8266
@@ -428,7 +428,7 @@ def leer_rfid(timeout=30):
                     print(f"[INFO] RFID completo: {rfid_hex_completo}")
                     print(f"[INFO] RFID recortado (8 chars): {rfid_hex}")
                 else:
-                    rfid_hex = rfid_hex_completo. zfill(8)  # Rellenar con ceros si es corto
+                    rfid_hex = rfid_hex_completo.zfill(8)  # Rellenar con ceros si es corto
                 
                 resultado['rfid'] = rfid_hex
                 resultado['completado'] = True
@@ -534,7 +534,7 @@ def capturar_rostro():
                 print(f"[DEBUG] No se detectó rostro en frame {intentos+1}")
             
             intentos += 1
-            time. sleep(0.3)
+            time.sleep(0.3)
         
         cap.release()
         print(f"[ERROR] ✗ No se detectó ningún rostro después de {max_intentos} intentos (~10s)")
@@ -613,7 +613,7 @@ def admin_login():
             'error': str(e)
         }), 500
 
-@app. route('/api/admin/registrar-admin', methods=['POST'])
+@app.route('/api/admin/registrar-admin', methods=['POST'])
 def registrar_nuevo_admin():
     """Registrar un nuevo administrador"""
     try:
@@ -813,7 +813,7 @@ def admin_completar_registro():
             conn = get_db_connection()
             if conn:
                 try:
-                    cursor = conn. cursor()
+                    cursor = conn.cursor()
                     cursor.execute("""
                         UPDATE pasajeros 
                         SET rfid_uid = NULL 
@@ -1069,7 +1069,7 @@ def usuario_verificar_rostro():
         else:
             print("="*60)
             print("[ERROR] ACCESO DENEGADO")
-            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:. 2f}% (mínimo: 60%)")
+            print(f"[INFO] Similitud insuficiente: {porcentaje_similitud:.2f}% (mínimo: 60%)")
             print("="*60 + "\n")
             
             # NO cambiar estado
@@ -1111,7 +1111,7 @@ def dashboard_pesos():
                 'error': 'Error de conexión a BD'
             }), 500
         
-        cursor = conn. cursor()
+        cursor = conn.cursor()
         
         # ✅ CORREGIDO: Quitar espacio en 1.5
         cursor.execute("""
@@ -1206,4 +1206,4 @@ if __name__ == '__main__':
     print("Flask Server: http://0.0.0.0:5000")
     print("="*60 + "\n")
     
-    app.run(host='0. 0.0.0', port=5000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
