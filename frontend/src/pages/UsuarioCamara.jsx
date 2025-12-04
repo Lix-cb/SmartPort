@@ -12,7 +12,6 @@ export default function UsuarioCamara() {
   const [idPasajero, setIdPasajero] = useState(null);
   const [nombrePasajero, setNombrePasajero] = useState("");
   const [vueloPasajero, setVueloPasajero] = useState("");
-  const [destinoPasajero, setDestinoPasajero] = useState("");
   const [similitud, setSimilitud] = useState(null);
   const [cameraPreviewAvailable, setCameraPreviewAvailable] = useState(false);
   const [countdown, setCountdown] = useState(3);
@@ -22,7 +21,6 @@ export default function UsuarioCamara() {
     const id = localStorage.getItem("usuario_id_pasajero");
     const nombre = localStorage.getItem("usuario_nombre");
     const vuelo = localStorage.getItem("usuario_vuelo");
-    const destino = localStorage.getItem("usuario_destino");
 
     if (! id) {
       alert("Sesión expirada. Por favor, escanee su RFID nuevamente");
@@ -33,14 +31,13 @@ export default function UsuarioCamara() {
     setIdPasajero(id);
     setNombrePasajero(nombre);
     setVueloPasajero(vuelo);
-    setDestinoPasajero(destino);
 
     // Iniciar preview de cámara (opcional)
     initCameraPreview();
 
     return () => {
       if (videoRef.current && videoRef.current.srcObject) {
-        videoRef.current. srcObject.getTracks().forEach(track => track.stop());
+        videoRef.current. srcObject. getTracks().forEach(track => track.stop());
       }
     };
   }, [navigate]);
@@ -119,7 +116,7 @@ export default function UsuarioCamara() {
       // ===== CASO 3: No detectó rostro → ERROR =====
       } else if (data.error === "No se detectó rostro") {
         console.error("[ERROR] No se detectó rostro");
-        setError("No se detectó ningún rostro. Por favor, mire directamente a la cámara.");
+        setError("No se detectó ningún rostro.  Por favor, mire directamente a la cámara.");
         setLoading(false);
         
       // ===== CASO 4: Otro error =====
@@ -140,8 +137,7 @@ export default function UsuarioCamara() {
     // Limpiar localStorage
     localStorage.removeItem("usuario_id_pasajero");
     localStorage.removeItem("usuario_nombre");
-    localStorage.removeItem("usuario_vuelo");
-    localStorage.removeItem("usuario_destino");
+    localStorage. removeItem("usuario_vuelo");
     
     navigate("/");
   };
@@ -180,9 +176,6 @@ export default function UsuarioCamara() {
           }}>
             <p style={{ margin: "5px 0", fontSize: "18px", color: "#333" }}>
               <strong>Vuelo:</strong> {vueloPasajero}
-            </p>
-            <p style={{ margin: "5px 0", fontSize: "18px", color: "#333" }}>
-              <strong>Destino:</strong> {destinoPasajero}
             </p>
             {similitud && (
               <p style={{ margin: "5px 0", fontSize: "16px", color: "#666" }}>
@@ -259,7 +252,7 @@ export default function UsuarioCamara() {
         alignItems: "center",
         justifyContent: "center"
       }}>
-        {cameraPreviewAvailable ? (
+        {cameraPreviewAvailable ?  (
           <>
             <video 
               ref={videoRef} 
