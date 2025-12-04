@@ -1,47 +1,91 @@
+/*
+ * SmartPort v2.0 - MÓDULO 2: Báscula Inteligente
+ * ESP8266 + HX711 + LCD I2C + LEDs
+ * 
+ * Funcionalidad:
+ * - Mide peso de equipaje con sensor HX711
+ * - Muestra en pantalla LCD 16x2
+ * - Envía peso por MQTT a Raspberry Pi
+ * - LEDs indicadores (Verde: OK, Rojo: Sobrepeso)
+ * 
+ * Conexiones:
+ * - HX711 DOUT → D6
+ * - HX711 SCK  → D5
+ * - LCD SDA    → D2
+ * - LCD SCL    → D1
+ * - LED Verde  → D7
+ * - LED Rojo   → D8
+ */
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <HX711.h>
-#include <LiquidCrystal_I2C. h>
+#include <LiquidCrystal_I2C.h>
 #include <ESP8266WiFi.h>
-#include <PubSubClient.h>
+#include <PubSubClient. h>
 #include <time.h>
 
-// Pines del HX711
+// ========================================
+// CONFIGURACIÓN DE PINES
+// ========================================
 #define HX_DOUT D6
 #define HX_SCK  D5
-
-// Pines LED
 #define LED_VERDE D7
 #define LED_ROJO  D8
 
-// WiFi y MQTT
-const char* ssid = "iPhone de Jorge";
-const char* password = "Arribalamaquina";
+// ========================================
+// CONFIGURACIÓN WiFi
+// ========================================
+const char* ssid = "iPhone de Jorge";           // CAMBIAR por tu red WiFi
+const char* password = "Arribalamaquina";       // CAMBIAR por tu contraseña
 
-const char* mqtt_server = "broker.mqtt.cool";
-const char* topic_peso = "aeropuerto/peso";  // CORREGIDO: Sin "puerta1/bascula/"
+// ========================================
+// CONFIGURACIÓN MQTT
+// ========================================
+const char* mqtt_server = "broker.mqtt. cool";
+const int mqtt_port = 1883;
+const char* mqtt_client_id = "ESP8266_Bascula_Aeropuerto";
+const char* topic_peso = "aeropuerto/peso";     // Topic para enviar pesos
 
-// LCD
-LiquidCrystal_I2C lcd(0x27, 16, 2);
-
+// ========================================
+// OBJETOS
+// ========================================
+LiquidCrystal_I2C lcd(0x27, 16, 2);             // LCD 16x2 en dirección 0x27
 HX711 scale;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// Calibration
-float calibration_factor = 236738.0;
+// ========================================
+// VARIABLES DE CALIBRACIÓN
+// ========================================
+float calibration_factor = 236738.0;            // Factor de calibración (ajustar según tu báscula)
 
-// Limites LEDs
-float limite_bajo = 0.1;
-float limite_alto = 2.0;
+// ========================================
+// LÍMITES DE PESO (en kg)
+// ========================================
+float limite_bajo = 0.1;                        // Peso mínimo para detectar
+float limite_alto = 23.0;                       // Peso máximo permitido (23 kg estándar aerolíneas)
 
-// Control de envio
+// ========================================
+// CONTROL DE ENVÍO
+// ========================================
 bool pesoEnviado = false;
+float ultimoPesoEnviado = 0. 0;
+unsigned long tiempoUltimoEnvio = 0;
+const unsigned long INTERVALO_ENVIO = 5000;     // Enviar cada 5 segundos máximo
 
-const long gmtOffset_sec = -21600;
+// ========================================
+// CONFIGURACIÓN DE HORA (NTP)
+// ========================================
+const long gmtOffset_sec = -21600;              // GMT-6 (México Centro)
 const int daylightOffset_sec = 0;
 
+// ========================================
+// FUNCIONES
+// ========================================
+
 void initTime() {
+  Serial.println("[NTP] Sincronizando hora.. .");
   configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
 
   time_t now = time(nullptr);
@@ -49,124 +93,291 @@ void initTime() {
 
   while (now < 100000 && intentos < 10) {
     delay(300);
+    Serial.print(".");
     now = time(nullptr);
     intentos++;
+  }
+  
+  if (now >= 100000) {
+    Serial.println("\n[NTP] Hora sincronizada correctamente");
+  } else {
+    Serial.println("\n[NTP] WARNING: No se pudo sincronizar hora");
   }
 }
 
 String getTimestamp() {
   time_t now = time(nullptr);
   struct tm* t = localtime(&now);
-
   char buffer[30];
   strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", t);
   return String(buffer);
 }
 
 void setupWiFi() {
+  delay(10);
+  Serial.println();
+  Serial.print("[WiFi] Conectando a: ");
+  Serial.println(ssid);
+
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
+  lcd.clear();
+  lcd.print("Conectando WiFi");
+
   int intentos = 0;
-  while (WiFi.status() != WL_CONNECTED && intentos < 25) {
-    delay(300);
+  while (WiFi.status() != WL_CONNECTED && intentos < 30) {
+    delay(500);
+    Serial.print(".");
+    lcd.setCursor(intentos % 16, 1);
+    lcd.print(".");
     intentos++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
+    Serial.println("[WiFi] Conectado exitosamente");
+    Serial.print("[WiFi] IP: ");
+    Serial.println(WiFi.localIP());
+
+    lcd.clear();
+    lcd.print("WiFi: OK");
+    lcd.setCursor(0, 1);
+    lcd.print(WiFi.localIP());
+    delay(2000);
+  } else {
+    Serial.println();
+    Serial.println("[WiFi] ERROR: No se pudo conectar");
+    
+    lcd.clear();
+    lcd.print("WiFi: ERROR");
+    delay(2000);
   }
 }
 
-void reconnect() {
-  while (! client.connected()) {
-    if (client.connect("ESP8266_Bascula_Aeropuerto")) return;
+void reconnectMQTT() {
+  while (!client.connected()) {
+    Serial.print("[MQTT] Conectando a ");
+    Serial.print(mqtt_server);
+    Serial.print(":");
+    Serial.print(mqtt_port);
+    Serial.println("...");
+
+    lcd.clear();
+    lcd.print("Conectando MQTT");
+
+    if (client.connect(mqtt_client_id)) {
+      Serial.println("[MQTT] ✓ Conectado exitosamente");
+      
+      lcd.clear();
+      lcd.print("MQTT: OK");
+      delay(1500);
+    } else {
+      Serial.print("[MQTT] ✗ Fallo, rc=");
+      Serial.print(client.state());
+      Serial.println(" - Reintentando en 5s.. .");
+      
+      lcd.clear();
+      lcd.print("MQTT: ERROR");
+      lcd.setCursor(0, 1);
+      lcd.print("Reintentando.. .");
+      
+      delay(5000);
+    }
+  }
+}
+
+void controlarLEDs(float peso) {
+  if (peso < limite_bajo) {
+    // Sin peso detectado
+    digitalWrite(LED_VERDE, LOW);
+    digitalWrite(LED_ROJO, LOW);
+  } else if (peso >= limite_bajo && peso <= limite_alto) {
+    // Peso dentro del rango permitido
+    digitalWrite(LED_VERDE, HIGH);
+    digitalWrite(LED_ROJO, LOW);
+  } else {
+    // Sobrepeso
+    digitalWrite(LED_VERDE, LOW);
+    digitalWrite(LED_ROJO, HIGH);
+  }
+}
+
+void enviarPesoMQTT(float peso) {
+  if (peso < limite_bajo) {
+    // No enviar si no hay peso significativo
+    pesoEnviado = false;
+    return;
+  }
+
+  unsigned long ahora = millis();
+  
+  // Evitar envíos repetidos del mismo peso
+  if (pesoEnviado && abs(peso - ultimoPesoEnviado) < 0.05) {
+    // Si el peso es prácticamente el mismo y ya se envió, no enviar de nuevo
+    if (ahora - tiempoUltimoEnvio < INTERVALO_ENVIO) {
+      return;
+    }
+  }
+
+  // Convertir peso a string con 2 decimales
+  char pesoStr[10];
+  dtostrf(peso, 6, 2, pesoStr);
+  
+  // Publicar por MQTT
+  if (client.publish(topic_peso, pesoStr)) {
+    Serial.print("[MQTT] ✓ Peso enviado: ");
+    Serial.print(peso, 2);
+    Serial.println(" kg");
+    Serial.print("[TIMESTAMP] ");
+    Serial.println(getTimestamp());
+    
+    pesoEnviado = true;
+    ultimoPesoEnviado = peso;
+    tiempoUltimoEnvio = ahora;
+    
+    // Feedback visual
+    lcd.setCursor(0, 1);
+    lcd.print("Enviado!         ");
+    delay(500);
+  } else {
+    Serial.println("[MQTT] ✗ Error al enviar peso");
+    
+    lcd.setCursor(0, 1);
+    lcd. print("Error envio     ");
     delay(500);
   }
 }
 
+// ========================================
+// SETUP
+// ========================================
 void setup() {
   Serial.begin(115200);
+  delay(100);
+  
+  Serial.println();
+  Serial.println("========================================");
+  Serial.println("  SmartPort v2.0 - MÓDULO 2");
+  Serial.println("  Báscula Inteligente HX711");
+  Serial.println("========================================");
 
+  // Configurar pines LED
   pinMode(LED_VERDE, OUTPUT);
   pinMode(LED_ROJO, OUTPUT);
+  digitalWrite(LED_VERDE, LOW);
+  digitalWrite(LED_ROJO, LOW);
 
+  // Inicializar LCD
   Wire.begin(D2, D1);
   lcd.init();
   lcd.backlight();
-
   lcd.clear();
-  lcd.print("Iniciando...");
-  delay(600);
+  lcd.print("SmartPort v2.0");
+  lcd.setCursor(0, 1);
+  lcd.print("Modulo 2");
+  delay(2000);
 
+  // Inicializar báscula HX711
+  lcd.clear();
+  lcd.print("Init Bascula.. .");
+  
   scale.begin(HX_DOUT, HX_SCK);
   delay(300);
+  
+  Serial.println("[HX711] Aplicando factor de calibración...");
   scale.set_scale(calibration_factor);
-
-  lcd. clear();
-  lcd.print("Tare sin peso..");
-  delay(800);
+  
+  lcd.clear();
+  lcd.print("Tara sin peso. .");
+  Serial.println("[HX711] Realizando tara (retire peso de la báscula)...");
+  delay(1000);
+  
   scale.tare();
-
+  Serial.println("[HX711] ✓ Tara completada");
+  
   lcd. clear();
-  lcd.print("Listo!");
-  delay(400);
+  lcd.print("Bascula: OK");
+  delay(1500);
 
+  // Conectar WiFi
   setupWiFi();
-  client.setServer(mqtt_server, 1883);
 
+  // Configurar MQTT
+  client.setServer(mqtt_server, mqtt_port);
+
+  // Sincronizar hora
   initTime();
+
+  // Listo
+  lcd.clear();
+  lcd.print("Sistema Listo!");
+  delay(1500);
+  
+  Serial.println("========================================");
+  Serial.println("[OK] Sistema iniciado correctamente");
+  Serial.println("========================================\n");
 }
 
+// ========================================
+// LOOP
+// ========================================
 void loop() {
-
-  if (! client.connected()) reconnect();
+  // Mantener conexión MQTT
+  if (!client.connected()) {
+    reconnectMQTT();
+  }
   client.loop();
 
+  // Verificar que la báscula esté lista
   if (scale.is_ready()) {
-
+    // Leer peso (promedio de 5 lecturas para estabilidad)
     float peso_kg = scale.get_units(5);
+    
+    // Limitar a 0 si es negativo (ruido)
+    if (peso_kg < 0) {
+      peso_kg = 0. 0;
+    }
 
+    // Mostrar en LCD
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Peso:");
     lcd.setCursor(6, 0);
-    lcd. print(peso_kg, 3);
+    lcd. print(peso_kg, 2);
     lcd.print(" kg");
 
-    Serial.print("Peso: ");
-    Serial.println(peso_kg, 3);
-
-    if (peso_kg >= limite_bajo && peso_kg <= limite_alto) {
-      digitalWrite(LED_VERDE, HIGH);
-      digitalWrite(LED_ROJO, LOW);
+    // Mostrar estado en segunda línea
+    if (peso_kg < limite_bajo) {
+      lcd.setCursor(0, 1);
+      lcd.print("Sin equipaje    ");
+    } else if (peso_kg <= limite_alto) {
+      lcd.setCursor(0, 1);
+      lcd.print("Peso OK         ");
     } else {
-      digitalWrite(LED_VERDE, LOW);
-      digitalWrite(LED_ROJO, HIGH);
+      lcd.setCursor(0, 1);
+      lcd.print("SOBREPESO!       ");
     }
 
-    if (peso_kg > 0.100 && !pesoEnviado) {
+    // Controlar LEDs
+    controlarLEDs(peso_kg);
 
-      delay(8000);
+    // Enviar por MQTT si hay peso significativo
+    enviarPesoMQTT(peso_kg);
 
-      float peso_final = scale. get_units(10);
-
-      String timestamp = getTimestamp();
-
-      // FORMATO JSON SIMPLE (app.py espera solo el numero)
-      String mensaje = String(peso_final, 3);
-
-      client.publish(topic_peso, mensaje.c_str());
-      Serial.println("MQTT enviado: " + mensaje);
-
-      pesoEnviado = true;
-    }
-
-    if (peso_kg <= 0.100) {
-      pesoEnviado = false;
-    }
+    // Mostrar en Serial Monitor
+    Serial.print("[PESO] ");
+    Serial.print(peso_kg, 3);
+    Serial.println(" kg");
 
   } else {
-    lcd. clear();
-    lcd.print("No HX711");
-    digitalWrite(LED_VERDE, LOW);
-    digitalWrite(LED_ROJO, HIGH);
+    Serial.println("[HX711] ERROR: Sensor no está listo");
+    
+    lcd.clear();
+    lcd.print("Error Sensor");
+    delay(500);
   }
 
-  delay(150);
+  // Pequeña pausa antes de la siguiente lectura
+  delay(500);
 }
