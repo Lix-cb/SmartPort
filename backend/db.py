@@ -515,4 +515,4 @@ def calcular_similitud_facial(embedding1, embedding2):
         print(f"[ERROR] Error calculando similitud: {e}")
         import traceback
         traceback.print_exc()
-        return 0. 0
+        return 0.0
