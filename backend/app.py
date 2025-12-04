@@ -973,6 +973,85 @@ def usuario_verificar_acceso():
         }), 500
 
 # ========================================
+# ENDPOINTS - DASHBOARD
+# ========================================
+
+@app. route('/api/admin/dashboard-pesos', methods=['GET'])
+def dashboard_pesos():
+    """
+    Obtener los últimos pesos registrados
+    Opcionalmente filtrar por fecha
+    """
+    try:
+        # Parámetros opcionales
+        limite = request.args.get('limite', 50, type=int)  # Default: últimos 50
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'status': 'error',
+                'error': 'Error de conexión a BD'
+            }), 500
+        
+        cursor = conn.cursor()
+        
+        # Obtener últimos pesos
+        cursor.execute("""
+            SELECT 
+                id_peso,
+                peso_kg,
+                fecha_hora,
+                CASE 
+                    WHEN peso_kg > 23. 0 THEN 'SOBREPESO'
+                    WHEN peso_kg > 20.0 THEN 'ADVERTENCIA'
+                    ELSE 'NORMAL'
+                END as estado
+            FROM pesos_equipaje
+            ORDER BY fecha_hora DESC
+            LIMIT %s
+        """, (limite,))
+        
+        pesos = cursor.fetchall()
+        
+        # Estadísticas
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total,
+                AVG(peso_kg) as promedio,
+                MAX(peso_kg) as maximo,
+                MIN(peso_kg) as minimo,
+                SUM(CASE WHEN peso_kg > 23.0 THEN 1 ELSE 0 END) as sobrepesos
+            FROM pesos_equipaje
+            WHERE DATE(fecha_hora) = CURDATE()
+        """)
+        
+        stats = cursor. fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'status': 'ok',
+            'pesos': pesos,
+            'estadisticas': {
+                'total_hoy': stats['total'] or 0,
+                'promedio': round(stats['promedio'], 2) if stats['promedio'] else 0,
+                'maximo': round(stats['maximo'], 2) if stats['maximo'] else 0,
+                'minimo': round(stats['minimo'], 2) if stats['minimo'] else 0,
+                'sobrepesos': stats['sobrepesos'] or 0
+            }
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Error en dashboard-pesos: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+# ========================================
 # INICIAR SERVIDOR
 # ========================================
 
